@@ -227,7 +227,6 @@ class TrackingService : Service(), SensorEventListener {
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
-        super.onDestroy()
         sensorManager.unregisterListener(this)
         stopTracking()
         disconnectWebSocket()
@@ -244,6 +243,7 @@ class TrackingService : Service(), SensorEventListener {
         TrackerStateManager.setConnectionState(ConnectionState.DISCONNECTED)
         TrackerStateManager.setTrackerStatus("Inactive")
         serviceScope.cancel()
+        super.onDestroy()
     }
 
     // --- Foreground Service Compatibility ---
