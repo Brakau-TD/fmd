@@ -1,0 +1,28 @@
+--- app/src/main/java/com/example/MainActivity.kt
++++ app/src/main/java/com/example/MainActivity.kt
+@@ -153,15 +153,24 @@
+         )
+     }
+ 
++    val bgLocationLauncher = rememberLauncherForActivityResult(
++        contract = ActivityResultContracts.RequestPermission()
++    ) { isGranted ->
++        viewModel.startService(context)
++    }
++
+     val launcher = rememberLauncherForActivityResult(
+         contract = ActivityResultContracts.RequestMultiplePermissions()
+     ) { results ->
+         val fineLocation = results[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+         val camera = results[Manifest.permission.CAMERA] ?: false
+         permissionsGranted = fineLocation && camera
+         if (permissionsGranted) {
+-            viewModel.startService(context)
++            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q && ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_BACKGROUND_LOCATION) != PackageManager.PERMISSION_GRANTED) {
++                bgLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
++            } else {
++                viewModel.startService(context)
++            }
+         }
+     }
+ 

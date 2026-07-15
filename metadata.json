@@ -1,0 +1,6 @@
+{
+  "name": "Find My Device",
+  "description": "Pair and continuously sync your smartphone location with a web portal, and execute remote commands like flashing, custom alerts, or sounding sirens.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

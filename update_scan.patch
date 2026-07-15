@@ -1,0 +1,29 @@
+--- app/src/main/java/com/example/MainActivity.kt
++++ app/src/main/java/com/example/MainActivity.kt
+@@ -433,7 +433,26 @@
+                         PairingPortalCard(
+                             viewModel = viewModel,
+                             onPasteClick = { showPastePayloadDialog = true },
+-                            onScanClick = { showQRScanner = true },
++                            onScanClick = {
++                                val options = GmsBarcodeScannerOptions.Builder()
++                                    .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
++                                    .enableAutoZoom()
++                                    .build()
++                                val scanner = GmsBarcodeScanning.getClient(context, options)
++                                scanner.startScan()
++                                    .addOnSuccessListener { barcode ->
++                                        val qrText = barcode.rawValue
++                                        if (qrText != null) {
++                                            viewModel.processPairingQR(qrText, context)
++                                        }
++                                    }
++                                    .addOnCanceledListener {
++                                        // Task canceled
++                                    }
++                                    .addOnFailureListener { e ->
++                                        Toast.makeText(context, "Scan failed: ${e.message}", Toast.LENGTH_SHORT).show()
++                                    }
++                            },
+                             onManualClick = { showManualPairDialog = true }
+                         )

@@ -1,0 +1,47 @@
+--- app/src/main/java/com/example/MainActivity.kt
++++ app/src/main/java/com/example/MainActivity.kt
+@@ -191,10 +191,6 @@
+                 }
+                 launcher.launch(permissionsToRequest.toTypedArray())
+             },
+-            onBypassPermissions = {
+-                permissionsGranted = true
+-                viewModel.startService(context)
+-            },
+             onOpenSettings = {
+                 val intent = android.content.Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                     data = android.net.Uri.fromParts("package", context.packageName, null)
+@@ -209,7 +205,6 @@
+ @Composable
+ fun PermissionRequiredScreen(
+     onRequestPermissions: () -> Unit,
+-    onBypassPermissions: () -> Unit,
+     onOpenSettings: () -> Unit
+ ) {
+     Surface(
+@@ -298,22 +293,6 @@
+                     fontSize = 15.sp
+                 )
+             }
+-
+-            Spacer(modifier = Modifier.height(12.dp))
+-
+-            Button(
+-                onClick = onBypassPermissions,
+-                colors = ButtonDefaults.buttonColors(containerColor = CyberGrayDeep, contentColor = TrackerBlue),
+-                shape = RoundedCornerShape(12.dp),
+-                modifier = Modifier
+-                    .fillMaxWidth()
+-                    .height(50.dp)
+-                    .border(1.dp, CyberGrayBorder, RoundedCornerShape(12.dp))
+-                    .testTag("bypass_permissions_button")
+-            ) {
+-                Text(
+-                    text = "Bypass for Simulator / Demo Mode",
+-                    fontWeight = FontWeight.SemiBold,
+-                    fontSize = 15.sp
+-                )
+-            }
+         }
+     }
+ }

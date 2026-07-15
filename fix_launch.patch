@@ -1,0 +1,12 @@
+--- app/src/main/java/com/example/MainActivity.kt
++++ app/src/main/java/com/example/MainActivity.kt
+@@ -158,6 +158,9 @@
+         val fineLocation = results[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
+         val camera = results[Manifest.permission.CAMERA] ?: false
+         permissionsGranted = fineLocation && camera
++        if (permissionsGranted) {
++            viewModel.startService(context)
++        }
+     }
+ 
+     LaunchedEffect(Unit) {
