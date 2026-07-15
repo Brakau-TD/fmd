@@ -355,6 +355,16 @@ fun TrackerDashboard(viewModel: TrackerViewModel) {
         backgroundLocationGranted = granted
     }
 
+    var isBatteryOptimized by remember {
+        mutableStateOf(!BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context))
+    }
+    
+    val batteryOptimizationLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.StartActivityForResult()
+    ) {
+        isBatteryOptimized = !BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context)
+    }
+
     // Active Command Alerts Observables
     val isAlarmRunning by viewModel.isAlarmRunning.collectAsState()
     val isFlashingRunning by viewModel.isFlashingRunning.collectAsState()
@@ -500,6 +510,60 @@ fun TrackerDashboard(viewModel: TrackerViewModel) {
                                 }
                             }
             
+                            if (isBatteryOptimized) {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .border(1.dp, TrackerRed, RoundedCornerShape(16.dp)),
+                                    colors = CardDefaults.cardColors(containerColor = CyberGrayDeep),
+                                    shape = RoundedCornerShape(16.dp)
+                                ) {
+                                    Column(modifier = Modifier.padding(16.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = Icons.Default.Warning,
+                                                contentDescription = "Warning",
+                                                tint = TrackerRed,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "BATTERY OPTIMIZATION ACTIVE",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = TrackerRed,
+                                                fontFamily = FontFamily.Monospace
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text(
+                                            text = "To prevent the system from killing the tracker in the background when the phone is idle, you must disable battery optimization for this app.",
+                                            fontSize = 11.sp,
+                                            color = TextSecondary
+                                        )
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Button(
+                                            onClick = {
+                                                try {
+                                                    batteryOptimizationLauncher.launch(BatteryOptimizationHelper.getBatteryOptimizationIntent(context))
+                                                } catch (e: Exception) {
+                                                    // Fallback if intent fails
+                                                }
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = TrackerRed, contentColor = Color.White),
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(40.dp)
+                                                .testTag("disable_battery_optimization_button")
+                                        ) {
+                                            Text("Disable Battery Optimization", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                        }
+                                    }
+                                }
+                            }
+
                             if (pairing == null || !pairing!!.isPaired) {
                                 Spacer(modifier = Modifier.height(16.dp))
                                 PairingPortalCard(

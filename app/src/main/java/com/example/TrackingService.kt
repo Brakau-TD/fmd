@@ -72,7 +72,10 @@ class TrackingService : Service(), SensorEventListener {
     
     private var webSocket: WebSocket? = null
     private val okHttpClient = OkHttpClient.Builder()
-        .pingInterval(15, TimeUnit.SECONDS)
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(60, TimeUnit.SECONDS)
+        .writeTimeout(60, TimeUnit.SECONDS)
+        .pingInterval(25, TimeUnit.SECONDS)
         .build()
 
     private var lastMotionTime = System.currentTimeMillis()
@@ -92,7 +95,16 @@ class TrackingService : Service(), SensorEventListener {
     private var isFlashingActive = false
     private var wakeLock: PowerManager.WakeLock? = null
     private var pairingConfigJob: kotlinx.coroutines.Job? = null
-    private var reconnectDelayMs = 1000L
+    
+    // Connection tracking
+    private var reconnectAttemptCount = 0
+    private var lastMessageTimeMs = 0L
+    private var connectionStartTimeMs = 0L
+    private val backoffDelaysMs = listOf(1000L, 2000L, 4000L, 8000L, 15000L, 30000L, 45000L, 60000L)
+    private val telemetryQueue = mutableListOf<String>()
+    
+    private var connectivityManager: android.net.ConnectivityManager? = null
+    private var networkCallback: android.net.ConnectivityManager.NetworkCallback? = null
 
     override fun onCreate() {
         super.onCreate()
@@ -112,7 +124,7 @@ class TrackingService : Service(), SensorEventListener {
         // Setup wake lock to hold connection when screen goes off (deferred to onStartCommand)
         try {
             val powerManager = getSystemService(Context.POWER_SERVICE) as PowerManager
-            //wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "FindMyDevice:TrackerWakeLock")
+            wakeLock = powerManager.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "FindMyDevice:TrackerWakeLock")
         } catch (e: Exception) {
             serviceScope.launch {
                 repository.addLog("SYSTEM", "Wake lock initialization bypassed: ${e.localizedMessage}", "WARNING")
@@ -163,7 +175,34 @@ class TrackingService : Service(), SensorEventListener {
             while (true) {
                 delay(10000) // Check every 10 seconds
                 checkStationaryState()
+                
+                // Max silence check (120s)
+                if (TrackerStateManager.connectionState.value == ConnectionState.CONNECTED && lastMessageTimeMs > 0) {
+                    if (System.currentTimeMillis() - lastMessageTimeMs > 120000L) {
+                        repository.addLog("CONNECTION", "No messages for 120s, triggering soft reconnect", "WARNING")
+                        TrackerStateManager.triggerLogsUpdate()
+                        disconnectWebSocket()
+                        triggerReconnectImmediate()
+                    }
+                }
             }
+        }
+        
+        // Register network callback
+        try {
+            connectivityManager = getSystemService(Context.CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+            networkCallback = object : android.net.ConnectivityManager.NetworkCallback() {
+                override fun onAvailable(network: android.net.Network) {
+                    super.onAvailable(network)
+                    serviceScope.launch {
+                        repository.addLog("SYSTEM", "Network became available, reconnecting...", "INFO")
+                        triggerReconnectImmediate()
+                    }
+                }
+            }
+            connectivityManager?.registerDefaultNetworkCallback(networkCallback!!)
+        } catch (e: Exception) {
+            serviceScope.launch { repository.addLog("SYSTEM", "Failed to register network callback", "WARNING") }
         }
     }
 
@@ -172,7 +211,7 @@ class TrackingService : Service(), SensorEventListener {
         
         when (action) {
             ACTION_START -> {
-                reconnectDelayMs = 1000L
+                reconnectAttemptCount = 0
                 startForegroundServiceCompat()
                 
                 // Acquire wake lock after becoming a foreground service
@@ -195,7 +234,7 @@ class TrackingService : Service(), SensorEventListener {
                         val prevConfig = lastSavedConfig
                         lastSavedConfig = config
                         if (config != null && config.isPaired) {
-                            reconnectDelayMs = 1000L
+                            reconnectAttemptCount = 0
                             connectWebSocket(config)
                             if (prevConfig != null && 
                                 (prevConfig.locationIntervalSec != config.locationIntervalSec || 
@@ -228,23 +267,31 @@ class TrackingService : Service(), SensorEventListener {
                 }
             }
             ACTION_RECONNECT -> {
-                reconnectDelayMs = 1000L
+                triggerReconnectImmediate()
                 serviceScope.launch {
-                    lastSavedConfig?.let {
-                        repository.addLog("CONNECTION", "Manual reconnection triggered", "INFO")
-                        connectWebSocket(it)
-                    }
+                    repository.addLog("CONNECTION", "Manual reconnection triggered", "INFO")
                 }
             }
         }
         
         return START_STICKY
     }
+    
+    private fun triggerReconnectImmediate() {
+        reconnectAttemptCount = 0
+        disconnectWebSocket()
+        lastSavedConfig?.let { connectWebSocket(it) }
+    }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onDestroy() {
         sensorManager.unregisterListener(this)
+        
+        networkCallback?.let {
+            connectivityManager?.unregisterNetworkCallback(it)
+        }
+        
         stopTracking()
         disconnectWebSocket()
         stopAlarm()
@@ -392,16 +439,40 @@ class TrackingService : Service(), SensorEventListener {
 
         webSocket = okHttpClient.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
-                reconnectDelayMs = 1000L
+                connectionStartTimeMs = System.currentTimeMillis()
+                lastMessageTimeMs = System.currentTimeMillis()
                 TrackerStateManager.setConnectionState(ConnectionState.CONNECTED)
                 serviceScope.launch {
                     repository.addLog("CONNECTION", "Web portal connection established successfully!", "SUCCESS")
                     TrackerStateManager.triggerLogsUpdate()
+                    
+                    // Flush queued telemetry
+                    val queueCopy = mutableListOf<String>()
+                    synchronized(telemetryQueue) {
+                        if (telemetryQueue.isNotEmpty()) {
+                            queueCopy.addAll(telemetryQueue)
+                            telemetryQueue.clear()
+                        }
+                    }
+                    if (queueCopy.isNotEmpty()) {
+                        repository.addLog("CONNECTION", "Flushing ${queueCopy.size} queued telemetry frames", "INFO")
+                        for (msg in queueCopy) {
+                            webSocket.send(msg)
+                        }
+                    }
+                    
                     sendCurrentLocationImmediate()
                 }
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
+                lastMessageTimeMs = System.currentTimeMillis()
+                
+                // Reset backoff if stable for 90s
+                if (System.currentTimeMillis() - connectionStartTimeMs > 90000L) {
+                    reconnectAttemptCount = 0
+                }
+                
                 handleIncomingMessage(text)
             }
 
@@ -422,12 +493,7 @@ class TrackingService : Service(), SensorEventListener {
                     repository.addLog("CONNECTION", displayMessage, "ERROR")
                     TrackerStateManager.triggerLogsUpdate()
                 }
-                // Schedule reconnection
-                val currentDelay = reconnectDelayMs
-                reconnectDelayMs = (reconnectDelayMs * 2).coerceAtMost(30000L)
-                locationHandler.postDelayed({
-                    lastSavedConfig?.let { connectWebSocket(it) }
-                }, currentDelay)
+                scheduleReconnect()
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
@@ -436,8 +502,26 @@ class TrackingService : Service(), SensorEventListener {
                     repository.addLog("CONNECTION", "Connection closed by portal: $reason", "WARNING")
                     TrackerStateManager.triggerLogsUpdate()
                 }
+                scheduleReconnect()
             }
         })
+    }
+    
+    private fun scheduleReconnect() {
+        if (TrackerStateManager.connectionState.value == ConnectionState.CONNECTED) return
+        
+        val index = reconnectAttemptCount.coerceAtMost(backoffDelaysMs.size - 1)
+        val baseDelay = backoffDelaysMs[index]
+        val jitter = (baseDelay * 0.20 * Math.random()).toLong()
+        val delayMs = baseDelay + jitter
+        
+        reconnectAttemptCount++
+        
+        locationHandler.postDelayed({
+            if (TrackerStateManager.connectionState.value != ConnectionState.CONNECTED) {
+                lastSavedConfig?.let { connectWebSocket(it) }
+            }
+        }, delayMs)
     }
 
     private fun disconnectWebSocket() {
@@ -675,11 +759,6 @@ class TrackingService : Service(), SensorEventListener {
     private fun handleNewLocation(location: Location) {
         TrackerStateManager.setLastLocation(location)
         
-        // Broadcast location data via WebSocket
-        val config = lastSavedConfig ?: return
-        if (!config.isPaired || TrackerStateManager.connectionState.value != ConnectionState.CONNECTED) return
-
-        val ws = webSocket ?: return
         try {
             val payload = JSONObject().apply {
                 put("type", "location")
@@ -692,13 +771,7 @@ class TrackingService : Service(), SensorEventListener {
                 put("status", if (isCurrentlyStationary) "stationary" else "active")
             }
 
-            val secureMsg = SecurityUtils.securePayload(
-                clientId = config.clientId,
-                secretToken = config.secretToken,
-                payloadJson = payload.toString()
-            )
-            
-            ws.send(secureMsg)
+            sendSecurePayload(payload)
             
             serviceScope.launch {
                 repository.addLog("LOCATION", "Synced position: [${location.latitude}, ${location.longitude}] with server", "INFO")
@@ -836,16 +909,24 @@ class TrackingService : Service(), SensorEventListener {
 
     private fun sendSecurePayload(payload: JSONObject) {
         val config = lastSavedConfig ?: return
-        if (!config.isPaired || TrackerStateManager.connectionState.value != ConnectionState.CONNECTED) return
+        if (!config.isPaired) return
 
-        val ws = webSocket ?: return
         try {
             val secureMsg = SecurityUtils.securePayload(
                 clientId = config.clientId,
                 secretToken = config.secretToken,
                 payloadJson = payload.toString()
             )
-            ws.send(secureMsg)
+            
+            if (TrackerStateManager.connectionState.value == ConnectionState.CONNECTED && webSocket != null) {
+                webSocket?.send(secureMsg)
+            } else {
+                synchronized(telemetryQueue) {
+                    if (telemetryQueue.size < 50) {
+                        telemetryQueue.add(secureMsg)
+                    }
+                }
+            }
         } catch (e: Exception) {
             serviceScope.launch {
                 repository.addLog("SYSTEM", "Failed sending payload to server: ${e.localizedMessage}", "ERROR")
@@ -854,14 +935,14 @@ class TrackingService : Service(), SensorEventListener {
     }
 
     private fun sendCommandAck(command: String, commandRef: String?, status: String) {
+        if (commandRef == null) return
         try {
+            val mappedStatus = if (status == "success") "acked" else "failed"
             val payload = JSONObject().apply {
                 put("type", "command_ack")
                 put("command", command)
-                if (commandRef != null) {
-                    put("commandRef", commandRef)
-                }
-                put("status", status)
+                put("commandRef", commandRef)
+                put("status", mappedStatus)
                 put("timestamp", System.currentTimeMillis())
             }
             sendSecurePayload(payload)
