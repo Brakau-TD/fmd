@@ -47,6 +47,18 @@ object TrackerStateManager {
     val isFlashingRunning = MutableStateFlow(false)
     val activeMessage = MutableStateFlow<String?>(null)
 
+    fun setAlarmRunning(running: Boolean) {
+        isAlarmRunning.value = running
+    }
+
+    fun setFlashingRunning(running: Boolean) {
+        isFlashingRunning.value = running
+    }
+
+    fun clearActiveMessage() {
+        activeMessage.value = null
+    }
+
     fun setServiceRunning(running: Boolean) {
         _isServiceRunning.value = running
     }

@@ -506,6 +506,13 @@ class TrackingService : Service(), SensorEventListener {
             // Parse payload
             val payload = JSONObject(payloadStr)
             val command = payload.optString("command")
+            val commandRef = if (payload.has("commandRef")) {
+                payload.optString("commandRef").takeIf { it.isNotEmpty() }
+            } else if (payload.has("id")) {
+                payload.optString("id").takeIf { it.isNotEmpty() }
+            } else {
+                null
+            }
             
             serviceScope.launch {
                 repository.addLog("COMMAND", "Received secure command: $command", "SUCCESS")
@@ -515,11 +522,13 @@ class TrackingService : Service(), SensorEventListener {
             when (command) {
                 "get_current_location" -> {
                     sendCurrentLocationImmediate()
+                    sendCommandAck(command, commandRef, "success")
                 }
                 "flash_flashlight_and_screen" -> {
                     serviceScope.launch {
                         TrackerStateManager.emitCommandEvent(TrackerEvent.FlashAlerts)
                         bringAppToForeground()
+                        sendCommandAck(command, commandRef, "success")
                     }
                 }
                 "display_message_on_screen" -> {
@@ -527,17 +536,44 @@ class TrackingService : Service(), SensorEventListener {
                     serviceScope.launch {
                         TrackerStateManager.emitCommandEvent(TrackerEvent.DisplayMessage(message))
                         bringAppToForeground()
+                        sendCommandAck(command, commandRef, "success")
                     }
                 }
                 "trigger_emergency_alarm" -> {
                     serviceScope.launch {
                         TrackerStateManager.emitCommandEvent(TrackerEvent.TriggerAlarm)
                         bringAppToForeground()
+                        sendCommandAck(command, commandRef, "success")
+                    }
+                }
+                "stop_alerts" -> {
+                    serviceScope.launch {
+                        TrackerStateManager.emitCommandEvent(TrackerEvent.StopAlerts)
+                        sendCommandAck(command, commandRef, "success")
+                    }
+                }
+                "stop_alarm" -> {
+                    serviceScope.launch {
+                        TrackerStateManager.setAlarmRunning(false)
+                        sendCommandAck(command, commandRef, "success")
+                    }
+                }
+                "stop_flashlight" -> {
+                    serviceScope.launch {
+                        TrackerStateManager.setFlashingRunning(false)
+                        sendCommandAck(command, commandRef, "success")
+                    }
+                }
+                "clear_message" -> {
+                    serviceScope.launch {
+                        TrackerStateManager.clearActiveMessage()
+                        sendCommandAck(command, commandRef, "success")
                     }
                 }
                 else -> {
                     serviceScope.launch {
                         repository.addLog("COMMAND", "Unsupported command: $command", "WARNING")
+                        sendCommandAck(command, commandRef, "failed")
                     }
                 }
             }
@@ -793,6 +829,46 @@ class TrackingService : Service(), SensorEventListener {
                 payloadJson = payload.toString()
             )
             ws.send(secureMsg)
+        } catch (e: Exception) {
+            // Ignored
+        }
+    }
+
+    private fun sendSecurePayload(payload: JSONObject) {
+        val config = lastSavedConfig ?: return
+        if (!config.isPaired || TrackerStateManager.connectionState.value != ConnectionState.CONNECTED) return
+
+        val ws = webSocket ?: return
+        try {
+            val secureMsg = SecurityUtils.securePayload(
+                clientId = config.clientId,
+                secretToken = config.secretToken,
+                payloadJson = payload.toString()
+            )
+            ws.send(secureMsg)
+        } catch (e: Exception) {
+            serviceScope.launch {
+                repository.addLog("SYSTEM", "Failed sending payload to server: ${e.localizedMessage}", "ERROR")
+            }
+        }
+    }
+
+    private fun sendCommandAck(command: String, commandRef: String?, status: String) {
+        try {
+            val payload = JSONObject().apply {
+                put("type", "command_ack")
+                put("command", command)
+                if (commandRef != null) {
+                    put("commandRef", commandRef)
+                }
+                put("status", status)
+                put("timestamp", System.currentTimeMillis())
+            }
+            sendSecurePayload(payload)
+            serviceScope.launch {
+                repository.addLog("COMMAND", "Sent command acknowledgement for '$command'", "INFO")
+                TrackerStateManager.triggerLogsUpdate()
+            }
         } catch (e: Exception) {
             // Ignored
         }
