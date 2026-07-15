@@ -81,6 +81,7 @@ class TrackingService : Service(), SensorEventListener {
 
     // Location request parameters
     private var locationCallback: LocationCallback? = null
+    private var isLocationCallbackRegistered = false
     private val locationHandler = Handler(Looper.getMainLooper())
 
     // Alarm ringtone
@@ -90,6 +91,7 @@ class TrackingService : Service(), SensorEventListener {
     private var isFlashingActive = false
     private var wakeLock: PowerManager.WakeLock? = null
     private var pairingConfigJob: kotlinx.coroutines.Job? = null
+    private var reconnectDelayMs = 1000L
 
     override fun onCreate() {
         super.onCreate()
@@ -146,14 +148,6 @@ class TrackingService : Service(), SensorEventListener {
                 checkStationaryState()
             }
         }
-        
-        // Heartbeat transmitter
-        serviceScope.launch {
-            while (true) {
-                delay(20000) // Heartbeat every 20 seconds
-                sendHeartbeat()
-            }
-        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -161,6 +155,7 @@ class TrackingService : Service(), SensorEventListener {
         
         when (action) {
             ACTION_START -> {
+                reconnectDelayMs = 1000L
                 startForegroundServiceCompat()
                 
                 // Acquire wake lock after becoming a foreground service
@@ -183,6 +178,7 @@ class TrackingService : Service(), SensorEventListener {
                         val prevConfig = lastSavedConfig
                         lastSavedConfig = config
                         if (config != null && config.isPaired) {
+                            reconnectDelayMs = 1000L
                             connectWebSocket(config)
                             if (prevConfig != null && 
                                 (prevConfig.locationIntervalSec != config.locationIntervalSec || 
@@ -215,6 +211,7 @@ class TrackingService : Service(), SensorEventListener {
                 }
             }
             ACTION_RECONNECT -> {
+                reconnectDelayMs = 1000L
                 serviceScope.launch {
                     lastSavedConfig?.let {
                         repository.addLog("CONNECTION", "Manual reconnection triggered", "INFO")
@@ -378,6 +375,7 @@ class TrackingService : Service(), SensorEventListener {
 
         webSocket = okHttpClient.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                reconnectDelayMs = 1000L
                 TrackerStateManager.setConnectionState(ConnectionState.CONNECTED)
                 serviceScope.launch {
                     repository.addLog("CONNECTION", "Web portal connection established successfully!", "SUCCESS")
@@ -397,7 +395,7 @@ class TrackingService : Service(), SensorEventListener {
                 val isCleartextError = errorMessage.contains("cleartext", ignoreCase = true) || 
                                        (t.cause?.localizedMessage?.contains("cleartext", ignoreCase = true) == true)
                                        
-                val displayMessage = if (isCleartextError) {
+                 val displayMessage = if (isCleartextError) {
                     "Server requires TLS. Please use HTTPS/WSS endpoint."
                 } else {
                     "Connection failed: $errorMessage. Retrying soon..."
@@ -408,9 +406,11 @@ class TrackingService : Service(), SensorEventListener {
                     TrackerStateManager.triggerLogsUpdate()
                 }
                 // Schedule reconnection
+                val currentDelay = reconnectDelayMs
+                reconnectDelayMs = (reconnectDelayMs * 2).coerceAtMost(30000L)
                 locationHandler.postDelayed({
                     lastSavedConfig?.let { connectWebSocket(it) }
-                }, 10000)
+                }, currentDelay)
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
@@ -427,32 +427,6 @@ class TrackingService : Service(), SensorEventListener {
         webSocket?.close(1000, "Service stopped")
         webSocket = null
         TrackerStateManager.setConnectionState(ConnectionState.DISCONNECTED)
-    }
-
-    private fun sendHeartbeat() {
-        val config = lastSavedConfig ?: return
-        if (!config.isPaired || TrackerStateManager.connectionState.value != ConnectionState.CONNECTED) return
-
-        val ws = webSocket ?: return
-        try {
-            val hType = if (isCurrentlyStationary) "stationary" else "active"
-            val payload = JSONObject().apply {
-                put("type", "heartbeat")
-                put("status", hType)
-                put("batterySaving", isCurrentlyStationary)
-                put("battery", getBatteryLevel())
-            }
-            
-            val secureMsg = SecurityUtils.securePayload(
-                clientId = config.clientId,
-                secretToken = config.secretToken,
-                payloadJson = payload.toString()
-            )
-            
-            ws.send(secureMsg)
-        } catch (e: Exception) {
-            // Ignored
-        }
     }
 
     private fun getBatteryLevel(): Int {
@@ -480,6 +454,16 @@ class TrackingService : Service(), SensorEventListener {
             if (clientId != config.clientId) {
                 serviceScope.launch {
                     repository.addLog("SECURITY", "Rejected message: client ID mismatch ($clientId vs ${config.clientId})", "ERROR")
+                }
+                return
+            }
+
+            // Enforce a ±5 minute replay window on incoming command timestamp
+            val currentTime = System.currentTimeMillis()
+            val timeDifference = if (currentTime > timestamp) currentTime - timestamp else timestamp - currentTime
+            if (timeDifference > 5 * 60 * 1000L) {
+                serviceScope.launch {
+                    repository.addLog("SECURITY", "Rejected message: timestamp replay check failed (diff: ${timeDifference / 1000}s)", "ERROR")
                 }
                 return
             }
@@ -611,6 +595,7 @@ class TrackingService : Service(), SensorEventListener {
                 locationCallback!!,
                 Looper.getMainLooper()
             )
+            isLocationCallbackRegistered = true
             
             val modeText = if (isCurrentlyStationary) "Power-Saving (Low Battery)" else "Active (High Frequency)"
             serviceScope.launch {
@@ -625,8 +610,11 @@ class TrackingService : Service(), SensorEventListener {
     }
 
     private fun stopTracking() {
-        locationCallback?.let {
-            fusedLocationClient.removeLocationUpdates(it)
+        if (isLocationCallbackRegistered) {
+            locationCallback?.let {
+                fusedLocationClient.removeLocationUpdates(it)
+            }
+            isLocationCallbackRegistered = false
         }
         locationCallback = null
     }
