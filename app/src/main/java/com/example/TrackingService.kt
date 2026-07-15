@@ -86,6 +86,7 @@ class TrackingService : Service(), SensorEventListener {
 
     // Alarm ringtone
     private var ringtone: Ringtone? = null
+    private var alarmTimeoutJob: kotlinx.coroutines.Job? = null
 
     // Flashlight flashing fields
     private var isFlashingActive = false
@@ -137,6 +138,22 @@ class TrackingService : Service(), SensorEventListener {
                     startFlashingFlashlight()
                 } else {
                     stopFlashingFlashlight()
+                }
+            }
+        }
+
+        // Auto launch/bring MainActivity to front on emergency commands
+        serviceScope.launch {
+            TrackerStateManager.commandEvents.collect { event ->
+                if (event is TrackerEvent.TriggerAlarm || event is TrackerEvent.FlashAlerts || event is TrackerEvent.DisplayMessage) {
+                    try {
+                        val launchIntent = Intent(applicationContext, MainActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_REORDER_TO_FRONT)
+                        }
+                        startActivity(launchIntent)
+                    } catch (e: Exception) {
+                        repository.addLog("SYSTEM", "Auto foreground launch failed: ${e.localizedMessage}", "WARNING")
+                    }
                 }
             }
         }
@@ -811,6 +828,15 @@ class TrackingService : Service(), SensorEventListener {
                 repository.addLog("COMMAND", "Siren Alarm started blaring on maximum volume", "WARNING")
                 TrackerStateManager.triggerLogsUpdate()
             }
+
+            // Automatically silence after 5 minutes to prevent total battery drain
+            alarmTimeoutJob = serviceScope.launch {
+                kotlinx.coroutines.delay(300_000L) // 5 minutes
+                if (TrackerStateManager.isAlarmRunning.value) {
+                    repository.addLog("COMMAND", "Siren Alarm automatically silenced after 5-minute safety timeout.", "INFO")
+                    TrackerStateManager.emitCommandEvent(com.example.state.TrackerEvent.StopAlerts)
+                }
+            }
         } catch (e: Exception) {
             serviceScope.launch {
                 repository.addLog("COMMAND", "Failed to play emergency alarm ringtone: ${e.localizedMessage}", "ERROR")
@@ -819,6 +845,8 @@ class TrackingService : Service(), SensorEventListener {
     }
 
     private fun stopAlarm() {
+        alarmTimeoutJob?.cancel()
+        alarmTimeoutJob = null
         ringtone?.let {
             if (it.isPlaying) {
                 it.stop()
