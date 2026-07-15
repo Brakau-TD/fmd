@@ -1560,7 +1560,7 @@ fun EmergencyActionOverlays(
                         Spacer(modifier = Modifier.height(14.dp))
 
                         Text(
-                            text = alertMessage ?: "REMOTE ALERTS ENGAGED. THIS DEVICE'S POSITION IS BEING SECURELY MONITORED.",
+                            text = alertMessage ?: "Lieber Finder. Schreibe bitte eine Nachricht an: <Email-Address>, so dass ich mir das Smartphone abholen kann.",
                             fontSize = 22.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = Color.White,
