@@ -1,6 +1,6 @@
 # Introduction from me, Brakau-TD:
 
-This android app solves a problem for me in that I use the find my device feature on Android, but I want to be a bit more privacy aware and at least have control over how find my devie works.
+This android app solves a problem for me in that I use the find my device feature on Android, but I want to be a bit more privacy aware and at least have control over how find my device works.
 That is why I created a Google AI Studio account and had this app written.
 I now can store location data in a sqlite-database on my backend and send flashes and other information to the smartphone in I case I really lose it. It is possible to implement alarm, flash and messages on the screen from the backend. Maybe this AI work is helpful to anyone and I would be happy if this app might grow eventually with more experienced coders than me.
 
