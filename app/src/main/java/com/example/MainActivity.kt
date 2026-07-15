@@ -134,6 +134,19 @@ import java.util.Locale
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        
+        // Show on lock screen and turn screen on for emergency alerts
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        } else {
+            @Suppress("DEPRECATION")
+            window.addFlags(
+                android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
+        }
+
         enableEdgeToEdge()
         setContent {
             MyApplicationTheme {
@@ -1460,111 +1473,146 @@ fun EmergencyActionOverlays(
     alertMessage: String?,
     onDismissAlert: () -> Unit
 ) {
+    val activity = LocalContext.current as? android.app.Activity
+    LaunchedEffect(isFlashing, isAlarm, alertMessage) {
+        val isEmergency = isFlashing || isAlarm || alertMessage != null
+        if (isEmergency) {
+            activity?.window?.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+    }
+
     if (isFlashing || alertMessage != null || isAlarm) {
-        // High visibility fullscreen blocking view
+        // High visibility background strobe/pulsing animation
+        val infiniteTransition = rememberInfiniteTransition(label = "strobe")
+        val strobeColor by infiniteTransition.animateColor(
+            initialValue = TrackerRed,
+            targetValue = Color(0xFF0D0E12), // Strobe between red and very dark slate to keep high urgency but avoid blinding
+            animationSpec = infiniteRepeatable(
+                animation = tween(400, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "strobeColor"
+        )
+
         Surface(
             modifier = Modifier.fillMaxSize(),
-            color = if (isFlashing) {
-                // Strobe effect: let's build an infinite loop animation to flash backgrounds
-                val infiniteTransition = rememberInfiniteTransition(label = "strobe")
-                val strobeColor by infiniteTransition.animateColor(
-                    initialValue = TrackerRed,
-                    targetValue = Color.White,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(120, easing = LinearEasing),
-                        repeatMode = RepeatMode.Reverse
-                    ),
-                    label = "strobeColor"
-                )
-                strobeColor
-            } else {
-                TrackerRed
-            }
+            color = if (isFlashing) strobeColor else TrackerRed
         ) {
-            Column(
+            Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(24.dp),
-                verticalArrangement = Arrangement.Center,
-                horizontalAlignment = Alignment.CenterHorizontally
+                    .padding(16.dp),
+                contentAlignment = Alignment.Center
             ) {
-                // Alarm siren ringing animation
-                val infiniteTransition = rememberInfiniteTransition(label = "ringScale")
-                val scale by infiniteTransition.animateFloat(
-                    initialValue = 0.8f,
-                    targetValue = 1.3f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(400, easing = LinearEasing),
-                        repeatMode = RepeatMode.Reverse
-                    ),
-                    label = "scale"
-                )
-
-                Icon(
-                    imageVector = Icons.Default.NotificationsActive,
-                    contentDescription = "Alert siren ringing",
-                    tint = if (isFlashing) CyberBlack else Color.White,
-                    modifier = Modifier
-                        .size(90.dp)
-                        .scale(scale)
-                )
-
-                Spacer(modifier = Modifier.height(24.dp))
-
-                Text(
-                    text = "EMERGENCY lost state ACTIVATED",
-                    fontSize = 14.sp,
-                    fontWeight = FontWeight.Black,
-                    letterSpacing = 2.sp,
-                    fontFamily = FontFamily.Monospace,
-                    color = if (isFlashing) CyberBlack else Color.White,
-                    textAlign = TextAlign.Center
-                )
-
-                Spacer(modifier = Modifier.height(10.dp))
-
-                Text(
-                    text = alertMessage ?: "REMOTE FLASHING COMMAND ENGAGED. THIS DEVICE IS BEING POSITIONALLY MONITORED.",
-                    fontSize = 24.sp,
-                    fontWeight = FontWeight.ExtraBold,
-                    color = if (isFlashing) CyberBlack else Color.White,
-                    textAlign = TextAlign.Center,
-                    lineHeight = 32.sp,
-                    modifier = Modifier.padding(horizontal = 12.dp)
-                )
-
-                Spacer(modifier = Modifier.height(12.dp))
-
-                if (isAlarm) {
-                    Text(
-                        text = "PANIC SIREN AUDIBLY BLARING ON MAX VOLUME",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace,
-                        color = if (isFlashing) CyberBlack.copy(alpha = 0.8f) else Color.White.copy(alpha = 0.8f),
-                        textAlign = TextAlign.Center
-                    )
-                }
-
-                Spacer(modifier = Modifier.height(48.dp))
-
-                Button(
-                    onClick = onDismissAlert,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isFlashing) CyberBlack else Color.White,
-                        contentColor = if (isFlashing) Color.White else TrackerRed
-                    ),
-                    shape = RoundedCornerShape(14.dp),
+                // Sleek, high-contrast container so elements are perfectly readable and never "white-on-white"
+                Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(54.dp)
-                        .testTag("dismiss_emergency_overlay_button")
-                ) {
-                    Text(
-                        text = "Dismiss Alarm & Message",
-                        fontWeight = FontWeight.Black,
-                        fontSize = 16.sp
+                        .padding(horizontal = 8.dp)
+                        .border(2.dp, TrackerRed, RoundedCornerShape(24.dp)),
+                    shape = RoundedCornerShape(24.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = Color(0xFF111218) // Sleek rich dark slate card container
                     )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(28.dp),
+                        verticalArrangement = Arrangement.Center,
+                        horizontalAlignment = Alignment.CenterHorizontally
+                    ) {
+                        // Alarm siren ringing animation
+                        val scaleTransition = rememberInfiniteTransition(label = "ringScale")
+                        val scale by scaleTransition.animateFloat(
+                            initialValue = 0.9f,
+                            targetValue = 1.2f,
+                            animationSpec = infiniteRepeatable(
+                                animation = tween(350, easing = LinearEasing),
+                                repeatMode = RepeatMode.Reverse
+                            ),
+                            label = "scale"
+                        )
+
+                        Icon(
+                            imageVector = Icons.Default.NotificationsActive,
+                            contentDescription = "Alert siren ringing",
+                            tint = TrackerRed,
+                            modifier = Modifier
+                                .size(80.dp)
+                                .scale(scale)
+                        )
+
+                        Spacer(modifier = Modifier.height(20.dp))
+
+                        Text(
+                            text = "EMERGENCY TRACKING ACTIVE",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            letterSpacing = 2.sp,
+                            fontFamily = FontFamily.Monospace,
+                            color = TrackerRed,
+                            textAlign = TextAlign.Center
+                        )
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        Text(
+                            text = alertMessage ?: "REMOTE ALERTS ENGAGED. THIS DEVICE'S POSITION IS BEING SECURELY MONITORED.",
+                            fontSize = 22.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White,
+                            textAlign = TextAlign.Center,
+                            lineHeight = 30.sp,
+                            modifier = Modifier.padding(horizontal = 8.dp)
+                        )
+
+                        Spacer(modifier = Modifier.height(14.dp))
+
+                        if (isAlarm) {
+                            Text(
+                                text = "SIREN BLARING • MAX STREAM VOLUME\n(Auto-silences in 5 minutes to protect battery)",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                fontFamily = FontFamily.Monospace,
+                                color = Color.White.copy(alpha = 0.6f),
+                                textAlign = TextAlign.Center,
+                                lineHeight = 16.sp
+                            )
+                        } else {
+                            Text(
+                                text = "STATIONARY SECURITY MODE ENABLED",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                fontFamily = FontFamily.Monospace,
+                                color = Color.White.copy(alpha = 0.6f),
+                                textAlign = TextAlign.Center
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.height(36.dp))
+
+                        Button(
+                            onClick = onDismissAlert,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = Color.White, // Pure high-contrast white button background
+                                contentColor = Color(0xFF111218) // Deep dark text for extreme readability
+                            ),
+                            shape = RoundedCornerShape(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(54.dp)
+                                .testTag("dismiss_emergency_overlay_button")
+                        ) {
+                            Text(
+                                text = "Dismiss Alarm & Message",
+                                fontWeight = FontWeight.Black,
+                                fontSize = 16.sp
+                            )
+                        }
+                    }
                 }
             }
         }
