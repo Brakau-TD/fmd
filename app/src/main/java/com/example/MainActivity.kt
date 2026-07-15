@@ -1557,19 +1557,21 @@ fun EmergencyActionOverlays(
                             textAlign = TextAlign.Center
                         )
 
-                        Spacer(modifier = Modifier.height(14.dp))
-
-                        Text(
-                            text = alertMessage ?: "Lieber Finder. Schreibe bitte eine Nachricht an: <Email-Address>, so dass ich mir das Smartphone abholen kann.",
-                            fontSize = 22.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            color = Color.White,
-                            textAlign = TextAlign.Center,
-                            lineHeight = 30.sp,
-                            modifier = Modifier.padding(horizontal = 8.dp)
-                        )
-
-                        Spacer(modifier = Modifier.height(14.dp))
+                        if (alertMessage != null) {
+                            Spacer(modifier = Modifier.height(14.dp))
+                            Text(
+                                text = alertMessage,
+                                fontSize = 22.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = Color.White,
+                                textAlign = TextAlign.Center,
+                                lineHeight = 30.sp,
+                                modifier = Modifier.padding(horizontal = 8.dp)
+                            )
+                            Spacer(modifier = Modifier.height(14.dp))
+                        } else {
+                            Spacer(modifier = Modifier.height(14.dp))
+                        }
 
                         if (isAlarm) {
                             Text(
