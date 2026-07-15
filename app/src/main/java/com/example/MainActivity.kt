@@ -37,6 +37,9 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CellTower
 import androidx.compose.material.icons.filled.Circle
@@ -416,143 +419,152 @@ fun TrackerDashboard(viewModel: TrackerViewModel) {
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(20.dp)
-            ) {
-                // 1. Connection Radar & Status Overview
-                StatusOverviewCard(
-                    isServiceRunning = isRunning,
-                    connectionState = connectionState,
-                    trackerStatus = trackerStatus,
-                    isPowerSaving = isPowerSaving,
-                    lastLocation = lastLoc,
-                    pairingConfig = pairing,
-                    onToggleService = {
-                        if (isRunning) viewModel.stopService(context) 
-                        else viewModel.startService(context)
-                    }
-                )
+            val pagerState = rememberPagerState(pageCount = { 2 })
 
-                if (!backgroundLocationGranted && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                    Spacer(modifier = Modifier.height(12.dp))
-                    Card(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .border(1.dp, TrackerRed, RoundedCornerShape(16.dp)),
-                        colors = CardDefaults.cardColors(containerColor = CyberGrayDeep),
-                        shape = RoundedCornerShape(16.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(16.dp)) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Warning,
-                                    contentDescription = "Warning",
-                                    tint = TrackerRed,
-                                    modifier = Modifier.size(20.dp)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                Text(
-                                    text = "BACKGROUND ACCESS REQUIRED",
-                                    fontSize = 11.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = TrackerRed,
-                                    fontFamily = FontFamily.Monospace
-                                )
-                            }
-                            Spacer(modifier = Modifier.height(6.dp))
-                            Text(
-                                text = "To allow the tracker to run automatically on boot, update, and when locked, please change location access to 'Allow all the time' in the system settings.",
-                                fontSize = 11.sp,
-                                color = TextSecondary
+            HorizontalPager(
+                state = pagerState,
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(horizontal = 20.dp),
+                pageSpacing = 16.dp
+            ) { page ->
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(vertical = 20.dp)
+                ) {
+                    if (page == 0) {
+                        Column(
+                            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())
+                        ) {
+                            // 1. Connection Radar & Status Overview
+                            StatusOverviewCard(
+                                isServiceRunning = isRunning,
+                                connectionState = connectionState,
+                                trackerStatus = trackerStatus,
+                                isPowerSaving = isPowerSaving,
+                                lastLocation = lastLoc,
+                                pairingConfig = pairing,
+                                onToggleService = {
+                                    if (isRunning) viewModel.stopService(context) 
+                                    else viewModel.startService(context)
+                                }
                             )
-                            Spacer(modifier = Modifier.height(12.dp))
-                            Button(
-                                onClick = {
-                                    bgLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = TrackerRed, contentColor = Color.White),
-                                shape = RoundedCornerShape(8.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(40.dp)
-                                    .testTag("grant_background_location_button")
-                            ) {
-                                Text("Grant 'Allow all the time' Access", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                            }
-                        }
-                    }
-                }
-
-                Spacer(modifier = Modifier.height(16.dp))
-
-                // 2. Conditional Display: Setup & Pairing vs Logs & Commands Console
-                if (pairing == null || !pairing!!.isPaired) {
-                    Column(
-                        modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())
-                    ) {
-                        PairingPortalCard(
-                            viewModel = viewModel,
-                            onPasteClick = { showPastePayloadDialog = true },
-                            onScanClick = {
-                                val options = GmsBarcodeScannerOptions.Builder()
-                                    .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
-                                    .enableAutoZoom()
-                                    .build()
-                                val scanner = GmsBarcodeScanning.getClient(context, options)
-                                scanner.startScan()
-                                    .addOnSuccessListener { barcode ->
-                                        val qrText = barcode.rawValue
-                                        if (qrText != null) {
-                                            viewModel.processPairingQR(qrText, context)
+            
+                            if (!backgroundLocationGranted && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                                Spacer(modifier = Modifier.height(12.dp))
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .border(1.dp, TrackerRed, RoundedCornerShape(16.dp)),
+                                    colors = CardDefaults.cardColors(containerColor = CyberGrayDeep),
+                                    shape = RoundedCornerShape(16.dp)
+                                ) {
+                                    Column(modifier = Modifier.padding(16.dp)) {
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            Icon(
+                                                imageVector = Icons.Default.Warning,
+                                                contentDescription = "Warning",
+                                                tint = TrackerRed,
+                                                modifier = Modifier.size(20.dp)
+                                            )
+                                            Spacer(modifier = Modifier.width(8.dp))
+                                            Text(
+                                                text = "BACKGROUND ACCESS REQUIRED",
+                                                fontSize = 11.sp,
+                                                fontWeight = FontWeight.Bold,
+                                                color = TrackerRed,
+                                                fontFamily = FontFamily.Monospace
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(6.dp))
+                                        Text(
+                                            text = "To allow the tracker to run automatically on boot, update, and when locked, please change location access to 'Allow all the time' in the system settings.",
+                                            fontSize = 11.sp,
+                                            color = TextSecondary
+                                        )
+                                        Spacer(modifier = Modifier.height(12.dp))
+                                        Button(
+                                            onClick = {
+                                                bgLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                                            },
+                                            colors = ButtonDefaults.buttonColors(containerColor = TrackerRed, contentColor = Color.White),
+                                            shape = RoundedCornerShape(8.dp),
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(40.dp)
+                                                .testTag("grant_background_location_button")
+                                        ) {
+                                            Text("Grant 'Allow all the time' Access", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                                         }
                                     }
-                                    .addOnCanceledListener {
-                                        // Task canceled
-                                    }
-                                    .addOnFailureListener { e ->
-                                        Toast.makeText(context, "Scan failed: ${e.message}", Toast.LENGTH_SHORT).show()
-                                    }
-                            },
-                            onManualClick = { showManualPairDialog = true }
-                        )
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        TerminalLogsConsole(
-                            logs = logs,
-                            onClearLogs = { viewModel.clearLogs() },
-                            onDisconnect = null,
-                            onExportLogs = {
-                                shareLogFile(context, logs)
+                                }
                             }
-                        )
-                    }
-                } else {
-                    // Paired view
-                    Column(
-                        modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())
-                    ) {
-                        // Collapsible Simulator Control Deck (Premium addition)
-                        ClientSimulatorDeck(viewModel = viewModel)
-                        
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // Location Reporting Frequency Customizer
-                        TrackingFrequencySettingsCard(viewModel = viewModel)
-
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        // Terminal Logs console
-                        TerminalLogsConsole(
-                            logs = logs,
-                            onClearLogs = { viewModel.clearLogs() },
-                            onDisconnect = { viewModel.disconnect(context) },
-                            onExportLogs = {
-                                shareLogFile(context, logs)
+            
+                            if (pairing == null || !pairing!!.isPaired) {
+                                Spacer(modifier = Modifier.height(16.dp))
+                                PairingPortalCard(
+                                    viewModel = viewModel,
+                                    onPasteClick = { showPastePayloadDialog = true },
+                                    onScanClick = {
+                                        val options = GmsBarcodeScannerOptions.Builder()
+                                            .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+                                            .enableAutoZoom()
+                                            .build()
+                                        val scanner = GmsBarcodeScanning.getClient(context, options)
+                                        scanner.startScan()
+                                            .addOnSuccessListener { barcode ->
+                                                val qrText = barcode.rawValue
+                                                if (qrText != null) {
+                                                    viewModel.processPairingQR(qrText, context)
+                                                }
+                                            }
+                                            .addOnCanceledListener {
+                                                // Task canceled
+                                            }
+                                            .addOnFailureListener { e ->
+                                                Toast.makeText(context, "Scan failed: ${e.message}", Toast.LENGTH_SHORT).show()
+                                            }
+                                    },
+                                    onManualClick = { showManualPairDialog = true }
+                                )
                             }
-                        )
+                        }
+                    } else {
+                        // Page 1: Settings, Logs, Command Console
+                        Column(
+                            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())
+                        ) {
+                            if (pairing == null || !pairing!!.isPaired) {
+                                TerminalLogsConsole(
+                                    logs = logs,
+                                    onClearLogs = { viewModel.clearLogs() },
+                                    onDisconnect = null,
+                                    onExportLogs = {
+                                        shareLogFile(context, logs)
+                                    }
+                                )
+                            } else {
+                                // Location Reporting Frequency Customizer
+                                TrackingFrequencySettingsCard(viewModel = viewModel)
+        
+                                Spacer(modifier = Modifier.height(16.dp))
+        
+                                // Terminal Logs console
+                                TerminalLogsConsole(
+                                    logs = logs,
+                                    onClearLogs = { viewModel.clearLogs() },
+                                    onDisconnect = { viewModel.disconnect(context) },
+                                    onExportLogs = {
+                                        shareLogFile(context, logs)
+                                    }
+                                )
+        
+                                Spacer(modifier = Modifier.height(16.dp))
+                                
+                                // Collapsible Simulator Control Deck (Portal Command Console at the bottom)
+                                ClientSimulatorDeck(viewModel = viewModel)
+                            }
+                        }
                     }
                 }
             }
