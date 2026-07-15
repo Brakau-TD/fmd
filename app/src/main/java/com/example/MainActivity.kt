@@ -335,6 +335,23 @@ fun TrackerDashboard(viewModel: TrackerViewModel) {
     var showPastePayloadDialog by remember { mutableStateOf(false) }
     var showManualPairDialog by remember { mutableStateOf(false) }
 
+    // Background location state
+    var backgroundLocationGranted by remember {
+        mutableStateOf(
+            if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_BACKGROUND_LOCATION) == PackageManager.PERMISSION_GRANTED
+            } else {
+                true
+            }
+        )
+    }
+
+    val bgLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.RequestPermission()
+    ) { granted ->
+        backgroundLocationGranted = granted
+    }
+
     // Active Command Alerts Observables
     val isAlarmRunning by viewModel.isAlarmRunning.collectAsState()
     val isFlashingRunning by viewModel.isFlashingRunning.collectAsState()
@@ -417,6 +434,56 @@ fun TrackerDashboard(viewModel: TrackerViewModel) {
                         else viewModel.startService(context)
                     }
                 )
+
+                if (!backgroundLocationGranted && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                    Spacer(modifier = Modifier.height(12.dp))
+                    Card(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .border(1.dp, TrackerRed, RoundedCornerShape(16.dp)),
+                        colors = CardDefaults.cardColors(containerColor = CyberGrayDeep),
+                        shape = RoundedCornerShape(16.dp)
+                    ) {
+                        Column(modifier = Modifier.padding(16.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Icon(
+                                    imageVector = Icons.Default.Warning,
+                                    contentDescription = "Warning",
+                                    tint = TrackerRed,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                Text(
+                                    text = "BACKGROUND ACCESS REQUIRED",
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TrackerRed,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                            Spacer(modifier = Modifier.height(6.dp))
+                            Text(
+                                text = "To allow the tracker to run automatically on boot, update, and when locked, please change location access to 'Allow all the time' in the system settings.",
+                                fontSize = 11.sp,
+                                color = TextSecondary
+                            )
+                            Spacer(modifier = Modifier.height(12.dp))
+                            Button(
+                                onClick = {
+                                    bgLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = TrackerRed, contentColor = Color.White),
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(40.dp)
+                                    .testTag("grant_background_location_button")
+                            ) {
+                                Text("Grant 'Allow all the time' Access", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
 
                 Spacer(modifier = Modifier.height(16.dp))
 
