@@ -95,6 +95,7 @@ class TrackingService : Service(), SensorEventListener {
     private var isFlashingActive = false
     private var wakeLock: PowerManager.WakeLock? = null
     private var pairingConfigJob: kotlinx.coroutines.Job? = null
+    private var heartbeatJob: kotlinx.coroutines.Job? = null
     
     // Connection tracking
     private var reconnectAttemptCount = 0
@@ -217,7 +218,7 @@ class TrackingService : Service(), SensorEventListener {
                 // Acquire wake lock after becoming a foreground service
                 try {
                     wakeLock?.let {
-                        if (!it.isHeld) it.acquire(10 * 60 * 1000L /*10 minutes default safety*/)
+                        if (!it.isHeld) it.acquire()
                     }
                 } catch (e: Exception) {
                     serviceScope.launch {
@@ -462,6 +463,7 @@ class TrackingService : Service(), SensorEventListener {
                     }
                     
                     sendCurrentLocationImmediate()
+                    startHeartbeatLoop()
                 }
             }
 
@@ -525,9 +527,39 @@ class TrackingService : Service(), SensorEventListener {
     }
 
     private fun disconnectWebSocket() {
+        heartbeatJob?.cancel()
+        heartbeatJob = null
         webSocket?.close(1000, "Service stopped")
         webSocket = null
         TrackerStateManager.setConnectionState(ConnectionState.DISCONNECTED)
+    }
+
+    private fun startHeartbeatLoop() {
+        heartbeatJob?.cancel()
+        heartbeatJob = serviceScope.launch {
+            while (true) {
+                delay(90000L) // 90s heartbeat interval
+                if (isCurrentlyStationary) {
+                    sendHeartbeat()
+                }
+            }
+        }
+    }
+
+    private fun sendHeartbeat() {
+        val config = lastSavedConfig ?: return
+        if (!config.isPaired) return
+        
+        try {
+            val payload = org.json.JSONObject().apply {
+                put("type", "heartbeat")
+                put("status", "stationary")
+                put("battery", getBatteryLevel())
+            }
+            sendSecurePayload(payload)
+        } catch (e: Exception) {
+            // ignore
+        }
     }
 
     private fun getBatteryLevel(): Int {
