@@ -8,8 +8,55 @@ class TrackerRepository(private val dao: TrackerDao) {
 
     val trackerLogs: Flow<List<TrackerLog>> = dao.getLogs()
 
+    val serverTargets: Flow<List<ServerTarget>> = dao.getServerTargets()
+
     suspend fun getPairingConfigDirect(): PairingConfig? {
         return dao.getPairingConfigDirect()
+    }
+
+    suspend fun getServerTargetsDirect(): List<ServerTarget> {
+        return dao.getServerTargetsDirect()
+    }
+
+    suspend fun upsertServerTarget(
+        id: Long = 0,
+        name: String,
+        host: String,
+        port: Int,
+        websocketUrl: String = "",
+        clientId: String = "",
+        secretToken: String = ""
+    ): ServerTarget {
+        val cleanHost = host.trim()
+        val cleanWs = websocketUrl.trim()
+        val existing = if (id > 0) {
+            dao.getServerTargetsDirect().find { it.id == id }
+        } else {
+            dao.findServerTargetByEndpoint(cleanHost, port, cleanWs)
+        }
+
+        val resolvedName = name.trim().ifEmpty {
+            existing?.name?.takeIf { it.isNotBlank() } ?: cleanHost.ifEmpty { "Server" }
+        }
+        val resolvedClientId = clientId.ifEmpty { existing?.clientId ?: "" }
+        val resolvedToken = secretToken.ifEmpty { existing?.secretToken ?: "" }
+
+        val targetToSave = ServerTarget(
+            id = existing?.id ?: id,
+            name = resolvedName,
+            serverHost = cleanHost,
+            serverPort = port,
+            websocketUrl = cleanWs,
+            clientId = resolvedClientId,
+            secretToken = resolvedToken,
+            lastUsed = System.currentTimeMillis()
+        )
+        val newId = dao.insertServerTarget(targetToSave)
+        return if (targetToSave.id == 0L) targetToSave.copy(id = newId) else targetToSave
+    }
+
+    suspend fun deleteServerTarget(id: Long) {
+        dao.deleteServerTarget(id)
     }
 
     suspend fun savePairing(
@@ -19,9 +66,10 @@ class TrackerRepository(private val dao: TrackerDao) {
         token: String,
         isPaired: Boolean,
         websocketUrl: String = "",
-        locationIntervalSec: Int = 10,
-        stationaryIntervalSec: Int = 300
+        locationIntervalSec: Int? = null,
+        stationaryIntervalSec: Int? = null
     ) {
+        val existing = dao.getPairingConfigDirect()
         dao.insertPairingConfig(
             PairingConfig(
                 serverHost = host,
@@ -30,8 +78,8 @@ class TrackerRepository(private val dao: TrackerDao) {
                 secretToken = token,
                 isPaired = isPaired,
                 websocketUrl = websocketUrl,
-                locationIntervalSec = locationIntervalSec,
-                stationaryIntervalSec = stationaryIntervalSec
+                locationIntervalSec = locationIntervalSec ?: existing?.locationIntervalSec ?: 10,
+                stationaryIntervalSec = stationaryIntervalSec ?: existing?.stationaryIntervalSec ?: 300
             )
         )
     }
@@ -66,3 +114,4 @@ class TrackerRepository(private val dao: TrackerDao) {
         addLog("CONNECTION", "Pairing connection disconnected and reset", "WARNING")
     }
 }
+

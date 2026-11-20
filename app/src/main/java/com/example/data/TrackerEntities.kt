@@ -25,3 +25,16 @@ data class TrackerLog(
     val message: String,
     val status: String = "INFO" // "INFO", "SUCCESS", "WARNING", "ERROR"
 )
+
+@Entity(tableName = "server_targets")
+data class ServerTarget(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val name: String,
+    val serverHost: String,
+    val serverPort: Int = 8080,
+    val websocketUrl: String = "",
+    val clientId: String = "",
+    val secretToken: String = "",
+    val lastUsed: Long = System.currentTimeMillis()
+)
+

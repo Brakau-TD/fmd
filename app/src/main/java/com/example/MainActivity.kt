@@ -114,9 +114,12 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.data.ServerTarget
 import com.example.data.TrackerLog
 import com.example.state.ConnectionState
 import com.example.ui.PastePayloadDialog
+import com.example.ui.ServerTargetDialog
+import com.example.ui.ServerTargetSwitcherCard
 import com.example.ui.theme.CyberBlack
 import org.json.JSONObject
 import com.example.ui.theme.CyberGrayBorder
@@ -337,6 +340,8 @@ fun TrackerDashboard(viewModel: TrackerViewModel) {
     // UI temporary flags
     var showPastePayloadDialog by remember { mutableStateOf(false) }
     var showManualPairDialog by remember { mutableStateOf(false) }
+    var showServerTargetDialog by remember { mutableStateOf(false) }
+    var editingServerTarget by remember { mutableStateOf<ServerTarget?>(null) }
 
     // Background location state
     var backgroundLocationGranted by remember {
@@ -457,6 +462,10 @@ fun TrackerDashboard(viewModel: TrackerViewModel) {
                                 onToggleService = {
                                     if (isRunning) viewModel.stopService(context) 
                                     else viewModel.startService(context)
+                                },
+                                onClientPortalClick = {
+                                    editingServerTarget = null
+                                    showServerTargetDialog = true
                                 }
                             )
             
@@ -564,6 +573,17 @@ fun TrackerDashboard(viewModel: TrackerViewModel) {
                                 }
                             }
 
+                            Spacer(modifier = Modifier.height(16.dp))
+
+                            // Target Server Input & Multi-Server Switcher
+                            ServerTargetSwitcherCard(
+                                viewModel = viewModel,
+                                onOpenDialogForTarget = { target ->
+                                    editingServerTarget = target
+                                    showServerTargetDialog = true
+                                }
+                            )
+
                             if (pairing == null || !pairing!!.isPaired) {
                                 Spacer(modifier = Modifier.height(16.dp))
                                 PairingPortalCard(
@@ -648,6 +668,14 @@ fun TrackerDashboard(viewModel: TrackerViewModel) {
                 )
             }
 
+            if (showServerTargetDialog) {
+                ServerTargetDialog(
+                    viewModel = viewModel,
+                    initialTarget = editingServerTarget,
+                    onDismiss = { showServerTargetDialog = false }
+                )
+            }
+
             // EMERGENCY COMMAND ACTION OVERLAYS
             EmergencyActionOverlays(
                 isFlashing = isFlashingRunning,
@@ -669,7 +697,8 @@ fun StatusOverviewCard(
     isPowerSaving: Boolean,
     lastLocation: android.location.Location?,
     pairingConfig: com.example.data.PairingConfig?,
-    onToggleService: () -> Unit
+    onToggleService: () -> Unit,
+    onClientPortalClick: () -> Unit = {}
 ) {
     Card(
         modifier = Modifier
@@ -819,13 +848,20 @@ fun StatusOverviewCard(
                         icon = Icons.Default.SettingsInputComponent
                     )
                     Spacer(modifier = Modifier.height(8.dp))
-                    DetailRow(
-                        label = "CLIENT PORTAL",
-                        value = if (pairingConfig != null && pairingConfig.serverHost.isNotEmpty()) 
-                            "${pairingConfig.serverHost}:${pairingConfig.serverPort}" else "Not Set",
-                        color = TextPrimary,
-                        icon = Icons.Default.CellTower
-                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable { onClientPortalClick() }
+                            .testTag("status_client_portal_row")
+                    ) {
+                        DetailRow(
+                            label = "CLIENT PORTAL (TAP TO CHANGE)",
+                            value = if (pairingConfig != null && pairingConfig.serverHost.isNotEmpty()) 
+                                "${pairingConfig.serverHost}:${pairingConfig.serverPort}" else "Not Set",
+                            color = TextPrimary,
+                            icon = Icons.Default.CellTower
+                        )
+                    }
                 }
             }
 
@@ -1514,6 +1550,10 @@ fun ManualPairingDialog(
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
+    val currentHost by viewModel.inputHost.collectAsState()
+    val currentPort by viewModel.inputPort.collectAsState()
+    var hostInput by remember(currentHost) { mutableStateOf(currentHost) }
+    var portInput by remember(currentPort) { mutableStateOf(currentPort) }
     var clientIdInput by remember { mutableStateOf("DEVICE-${(1000..9999).random()}") }
     var secretTokenInput by remember { mutableStateOf("sec_token_${(100000..999999).random()}") }
 
@@ -1536,12 +1576,45 @@ fun ManualPairingDialog(
                     fontFamily = FontFamily.Monospace
                 )
                 Text(
-                    text = "Setup secure credentials",
+                    text = "Setup target server & credentials",
                     fontSize = 16.sp,
                     fontWeight = FontWeight.ExtraBold,
                     color = TextPrimary
                 )
                 Spacer(modifier = Modifier.height(14.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = hostInput,
+                        onValueChange = { hostInput = it },
+                        label = { Text("Target Server Host") },
+                        singleLine = true,
+                        modifier = Modifier.weight(0.68f),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = TrackerGreen,
+                            unfocusedBorderColor = CyberGrayBorder,
+                            focusedLabelColor = TrackerGreen
+                        )
+                    )
+                    OutlinedTextField(
+                        value = portInput,
+                        onValueChange = { portInput = it },
+                        label = { Text("Port") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        modifier = Modifier.weight(0.32f),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = TrackerGreen,
+                            unfocusedBorderColor = CyberGrayBorder,
+                            focusedLabelColor = TrackerGreen
+                        )
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(10.dp))
 
                 OutlinedTextField(
                     value = clientIdInput,
@@ -1591,9 +1664,15 @@ fun ManualPairingDialog(
 
                     Button(
                         onClick = {
+                            val parsed = TrackerViewModel.parseEndpoint(hostInput, portInput)
                             val qrSimPayload = JSONObject().apply {
                                 put("clientId", clientIdInput)
                                 put("token", secretTokenInput)
+                                put("serverHost", parsed.host)
+                                put("serverPort", parsed.port)
+                                if (parsed.websocketUrl.isNotEmpty()) {
+                                    put("websocketUrl", parsed.websocketUrl)
+                                }
                             }
                             viewModel.processPairingQR(qrSimPayload.toString(), context)
                             onDismiss()

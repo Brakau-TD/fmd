@@ -22,11 +22,85 @@ import org.json.JSONObject
 
 class TrackerViewModel(application: Application) : AndroidViewModel(application) {
 
+    data class ParsedEndpoint(
+        val host: String,
+        val port: Int,
+        val websocketUrl: String
+    )
+
+    companion object {
+        fun parseEndpoint(
+            rawHostInput: String,
+            rawPortInput: String,
+            explicitWebsocketUrl: String = ""
+        ): ParsedEndpoint {
+            val trimmedInput = rawHostInput.trim()
+            val trimmedExplicitWs = explicitWebsocketUrl.trim()
+            val fallbackPort = rawPortInput.trim().toIntOrNull() ?: 8080
+
+            if (trimmedInput.isEmpty()) {
+                return ParsedEndpoint("127.0.0.1", fallbackPort, trimmedExplicitWs)
+            }
+
+            val lower = trimmedInput.lowercase()
+            val hasWsScheme = lower.startsWith("ws://") || lower.startsWith("wss://")
+            val hasHttpScheme = lower.startsWith("http://") || lower.startsWith("https://")
+            val isSecureScheme = lower.startsWith("wss://") || lower.startsWith("https://")
+
+            val withoutScheme = trimmedInput
+                .removePrefix("https://")
+                .removePrefix("HTTPS://")
+                .removePrefix("http://")
+                .removePrefix("HTTP://")
+                .removePrefix("wss://")
+                .removePrefix("WSS://")
+                .removePrefix("ws://")
+                .removePrefix("WS://")
+
+            val slashIndex = withoutScheme.indexOf('/')
+            val authority = if (slashIndex >= 0) withoutScheme.substring(0, slashIndex) else withoutScheme
+            val pathPart = if (slashIndex >= 0) withoutScheme.substring(slashIndex) else ""
+
+            var parsedHost = authority
+            var parsedPort = fallbackPort
+
+            val colonIndex = authority.lastIndexOf(':')
+            if (colonIndex > 0 && !authority.endsWith("]")) {
+                val potentialPort = authority.substring(colonIndex + 1).toIntOrNull()
+                if (potentialPort != null) {
+                    parsedHost = authority.substring(0, colonIndex)
+                    parsedPort = potentialPort
+                }
+            } else if (hasWsScheme || hasHttpScheme) {
+                if (rawPortInput.trim().isEmpty() || (isSecureScheme && fallbackPort == 8080)) {
+                    parsedPort = if (isSecureScheme) 443 else 80
+                }
+            }
+
+            val resolvedWsUrl = when {
+                trimmedExplicitWs.isNotEmpty() -> trimmedExplicitWs
+                hasWsScheme && pathPart.isNotEmpty() && pathPart != "/" -> trimmedInput
+                hasHttpScheme && pathPart.isNotEmpty() && pathPart != "/" -> {
+                    val wsScheme = if (isSecureScheme) "wss://" else "ws://"
+                    "$wsScheme$authority$pathPart"
+                }
+                else -> ""
+            }
+
+            return ParsedEndpoint(
+                host = parsedHost.trim().ifEmpty { "127.0.0.1" },
+                port = parsedPort,
+                websocketUrl = resolvedWsUrl
+            )
+        }
+    }
+
     private val repository: TrackerRepository
 
     // State bindings
     val pairingConfig = MutableStateFlow<com.example.data.PairingConfig?>(null)
     val logs: StateFlow<List<TrackerLog>>
+    val serverTargets: StateFlow<List<com.example.data.ServerTarget>>
     
     val isServiceRunning = TrackerStateManager.isServiceRunning
     val connectionState = TrackerStateManager.connectionState
@@ -53,9 +127,36 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
             initialValue = emptyList()
         )
 
+        serverTargets = repository.serverTargets.stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5000),
+            initialValue = emptyList()
+        )
+
         viewModelScope.launch {
             repository.pairingConfig.collect { config ->
                 pairingConfig.value = config
+                if (config != null && config.serverHost.isNotEmpty()) {
+                    inputHost.value = config.serverHost
+                    inputPort.value = config.serverPort.toString()
+                    // Ensure active configured server is present in saved server targets
+                    val existingTargets = repository.getServerTargetsDirect()
+                    val alreadySaved = existingTargets.any {
+                        it.serverHost == config.serverHost &&
+                        it.serverPort == config.serverPort &&
+                        it.websocketUrl == config.websocketUrl
+                    }
+                    if (!alreadySaved) {
+                        repository.upsertServerTarget(
+                            name = config.serverHost,
+                            host = config.serverHost,
+                            port = config.serverPort,
+                            websocketUrl = config.websocketUrl,
+                            clientId = config.clientId,
+                            secretToken = config.secretToken
+                        )
+                    }
+                }
             }
         }
     }
@@ -86,23 +187,187 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun initializePairingConnection(host: String, portStr: String, context: Context) {
-        val port = portStr.toIntOrNull() ?: 8080
+        val parsed = parseEndpoint(host, portStr)
         isConnectingForPairing.value = true
         
         viewModelScope.launch {
-            repository.addLog("CONNECTION", "Initializing socket handshake with $host:$port...", "INFO")
-            // Temporarily save pairing details as unpaired
+            val current = repository.getPairingConfigDirect()
+            val retainPaired = current?.isPaired == true && current.secretToken.isNotEmpty()
+            val cId = current?.clientId?.takeIf { it.isNotEmpty() } ?: "T-${(1000..9999).random()}"
+            val token = if (retainPaired) current!!.secretToken else ""
+
+            repository.addLog("CONNECTION", "Initializing socket handshake with ${parsed.host}:${parsed.port}...", "INFO")
             repository.savePairing(
-                host = host,
-                port = port,
-                clientId = "T-${(1000..9999).random()}", // Pre-generate temporary client ID
-                token = "", // Unpaired
-                isPaired = false
+                host = parsed.host,
+                port = parsed.port,
+                clientId = cId,
+                token = token,
+                isPaired = retainPaired,
+                websocketUrl = parsed.websocketUrl
             )
+            repository.upsertServerTarget(
+                name = parsed.host,
+                host = parsed.host,
+                port = parsed.port,
+                websocketUrl = parsed.websocketUrl,
+                clientId = cId,
+                secretToken = token
+            )
+            inputHost.value = parsed.host
+            inputPort.value = parsed.port.toString()
             isConnectingForPairing.value = false
             
             // Start the service to open the socket
             startService(context)
+        }
+    }
+
+    fun saveAndActivateServerTarget(
+        name: String,
+        rawHost: String,
+        rawPort: String,
+        explicitWsUrl: String = "",
+        clientIdOverride: String = "",
+        secretTokenOverride: String = "",
+        targetId: Long = 0,
+        context: Context
+    ) {
+        val parsed = parseEndpoint(rawHost, rawPort, explicitWsUrl)
+        viewModelScope.launch {
+            val current = repository.getPairingConfigDirect()
+            val resolvedClientId = clientIdOverride.trim().ifEmpty {
+                current?.clientId?.takeIf { it.isNotEmpty() } ?: "DEVICE-${(1000..9999).random()}"
+            }
+            val resolvedToken = secretTokenOverride.trim().ifEmpty {
+                current?.secretToken ?: ""
+            }
+            val isPaired = resolvedToken.isNotEmpty() || (current?.isPaired == true)
+
+            val savedTarget = repository.upsertServerTarget(
+                id = targetId,
+                name = name.trim().ifEmpty { parsed.host },
+                host = parsed.host,
+                port = parsed.port,
+                websocketUrl = parsed.websocketUrl,
+                clientId = resolvedClientId,
+                secretToken = resolvedToken
+            )
+
+            repository.savePairing(
+                host = savedTarget.serverHost,
+                port = savedTarget.serverPort,
+                clientId = resolvedClientId,
+                token = resolvedToken,
+                isPaired = isPaired,
+                websocketUrl = savedTarget.websocketUrl
+            )
+
+            inputHost.value = savedTarget.serverHost
+            inputPort.value = savedTarget.serverPort.toString()
+
+            val endpointLabel = if (savedTarget.websocketUrl.isNotEmpty()) {
+                savedTarget.websocketUrl
+            } else {
+                "${savedTarget.serverHost}:${savedTarget.serverPort}"
+            }
+            repository.addLog(
+                "CONNECTION",
+                "Switched target server to '${savedTarget.name}' [$endpointLabel]",
+                "SUCCESS"
+            )
+
+            startService(context)
+        }
+    }
+
+    fun saveServerTargetOnly(
+        name: String,
+        rawHost: String,
+        rawPort: String,
+        explicitWsUrl: String = "",
+        clientIdOverride: String = "",
+        secretTokenOverride: String = "",
+        targetId: Long = 0
+    ) {
+        val parsed = parseEndpoint(rawHost, rawPort, explicitWsUrl)
+        viewModelScope.launch {
+            val current = repository.getPairingConfigDirect()
+            val resolvedClientId = clientIdOverride.trim().ifEmpty { current?.clientId ?: "" }
+            val resolvedToken = secretTokenOverride.trim().ifEmpty { current?.secretToken ?: "" }
+
+            val saved = repository.upsertServerTarget(
+                id = targetId,
+                name = name.trim().ifEmpty { parsed.host },
+                host = parsed.host,
+                port = parsed.port,
+                websocketUrl = parsed.websocketUrl,
+                clientId = resolvedClientId,
+                secretToken = resolvedToken
+            )
+            repository.addLog(
+                "SYSTEM",
+                "Saved server target '${saved.name}' (${saved.serverHost}:${saved.serverPort})",
+                "INFO"
+            )
+        }
+    }
+
+    fun switchToServerTarget(target: com.example.data.ServerTarget, context: Context) {
+        viewModelScope.launch {
+            val current = repository.getPairingConfigDirect()
+            val resolvedClientId = target.clientId.ifEmpty {
+                current?.clientId?.takeIf { it.isNotEmpty() } ?: "DEVICE-${(1000..9999).random()}"
+            }
+            val resolvedToken = target.secretToken.ifEmpty {
+                current?.secretToken ?: ""
+            }
+            val isPaired = resolvedToken.isNotEmpty() || (current?.isPaired == true)
+
+            repository.upsertServerTarget(
+                id = target.id,
+                name = target.name,
+                host = target.serverHost,
+                port = target.serverPort,
+                websocketUrl = target.websocketUrl,
+                clientId = resolvedClientId,
+                secretToken = resolvedToken
+            )
+
+            repository.savePairing(
+                host = target.serverHost,
+                port = target.serverPort,
+                clientId = resolvedClientId,
+                token = resolvedToken,
+                isPaired = isPaired,
+                websocketUrl = target.websocketUrl
+            )
+
+            inputHost.value = target.serverHost
+            inputPort.value = target.serverPort.toString()
+
+            val endpointLabel = if (target.websocketUrl.isNotEmpty()) {
+                target.websocketUrl
+            } else {
+                "${target.serverHost}:${target.serverPort}"
+            }
+            repository.addLog(
+                "CONNECTION",
+                "Switched active target server to '${target.name}' [$endpointLabel]",
+                "SUCCESS"
+            )
+
+            startService(context)
+        }
+    }
+
+    fun deleteServerTarget(target: com.example.data.ServerTarget) {
+        viewModelScope.launch {
+            repository.deleteServerTarget(target.id)
+            repository.addLog(
+                "SYSTEM",
+                "Removed saved server target '${target.name}' (${target.serverHost}:${target.serverPort})",
+                "INFO"
+            )
         }
     }
 
@@ -118,9 +383,14 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
                 var cId = ""
                 var token = ""
 
-                var currentHost = pairingConfig.value?.serverHost ?: "127.0.0.1"
-                var currentPort = pairingConfig.value?.serverPort ?: 8080
-                var websocketUrl = ""
+                val fallbackEndpoint = parseEndpoint(
+                    rawHostInput = inputHost.value.ifBlank { pairingConfig.value?.serverHost ?: "127.0.0.1" },
+                    rawPortInput = inputPort.value.ifBlank { (pairingConfig.value?.serverPort ?: 8080).toString() },
+                    explicitWebsocketUrl = pairingConfig.value?.websocketUrl ?: ""
+                )
+                var currentHost = fallbackEndpoint.host
+                var currentPort = fallbackEndpoint.port
+                var websocketUrl = fallbackEndpoint.websocketUrl
 
                 if (scannedData.startsWith("{")) {
                     val json = JSONObject(scannedData)
@@ -130,12 +400,12 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
                         token = json.optString("secret", "")
                     }
                     
-                    if (json.has("serverHost")) {
-                        currentHost = json.optString("serverHost")
+                    if (json.has("serverHost") && json.optString("serverHost").isNotBlank()) {
+                        currentHost = json.optString("serverHost").trim()
                         inputHost.value = currentHost
                     }
                     if (json.has("serverPort")) {
-                        currentPort = json.optInt("serverPort")
+                        currentPort = json.optInt("serverPort", currentPort)
                         inputPort.value = currentPort.toString()
                     }
                     if (json.has("websocketUrl")) {
@@ -147,10 +417,21 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
                     val uri = android.net.Uri.parse(scannedData)
                     cId = uri.getQueryParameter("clientId") ?: ""
                     token = uri.getQueryParameter("token") ?: ""
-                    websocketUrl = uri.getQueryParameter("websocketUrl") ?: uri.getQueryParameter("wsUrl") ?: ""
+                    uri.getQueryParameter("serverHost")?.takeIf { it.isNotBlank() }?.let {
+                        currentHost = it.trim()
+                        inputHost.value = currentHost
+                    }
+                    uri.getQueryParameter("serverPort")?.toIntOrNull()?.let {
+                        currentPort = it
+                        inputPort.value = currentPort.toString()
+                    }
+                    val uriWs = uri.getQueryParameter("websocketUrl") ?: uri.getQueryParameter("wsUrl") ?: ""
+                    if (uriWs.isNotEmpty()) {
+                        websocketUrl = uriWs
+                    }
                 } else {
                     // Treat direct string as raw secret key, auto-generate client ID
-                    cId = pairingConfig.value?.clientId ?: "DEVICE-${(1000..9999).random()}"
+                    cId = pairingConfig.value?.clientId?.takeIf { it.isNotEmpty() } ?: "DEVICE-${(1000..9999).random()}"
                     token = scannedData.trim()
                 }
 
@@ -159,16 +440,27 @@ class TrackerViewModel(application: Application) : AndroidViewModel(application)
                     return@launch
                 }
 
+                val parsedFinal = parseEndpoint(currentHost, currentPort.toString(), websocketUrl)
+
                 repository.savePairing(
-                    host = currentHost,
-                    port = currentPort,
+                    host = parsedFinal.host,
+                    port = parsedFinal.port,
                     clientId = cId,
                     token = token,
                     isPaired = true,
-                    websocketUrl = websocketUrl
+                    websocketUrl = parsedFinal.websocketUrl
                 )
 
-                repository.addLog("SECURITY", "Successfully paired! Secured with HMAC-SHA256 Token.", "SUCCESS")
+                repository.upsertServerTarget(
+                    name = parsedFinal.host,
+                    host = parsedFinal.host,
+                    port = parsedFinal.port,
+                    websocketUrl = parsedFinal.websocketUrl,
+                    clientId = cId,
+                    secretToken = token
+                )
+
+                repository.addLog("SECURITY", "Successfully paired with ${parsedFinal.host}:${parsedFinal.port}! Secured with HMAC-SHA256 Token.", "SUCCESS")
                 
                 // Restart service to connect securely
                 startService(context)

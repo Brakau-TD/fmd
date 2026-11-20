@@ -31,4 +31,20 @@ interface TrackerDao {
 
     @Query("DELETE FROM tracker_logs")
     suspend fun clearLogs()
+
+    @Query("SELECT * FROM server_targets ORDER BY lastUsed DESC")
+    fun getServerTargets(): Flow<List<ServerTarget>>
+
+    @Query("SELECT * FROM server_targets ORDER BY lastUsed DESC")
+    suspend fun getServerTargetsDirect(): List<ServerTarget>
+
+    @Query("SELECT * FROM server_targets WHERE serverHost = :host AND serverPort = :port AND websocketUrl = :wsUrl LIMIT 1")
+    suspend fun findServerTargetByEndpoint(host: String, port: Int, wsUrl: String): ServerTarget?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertServerTarget(target: ServerTarget): Long
+
+    @Query("DELETE FROM server_targets WHERE id = :id")
+    suspend fun deleteServerTarget(id: Long)
 }
+

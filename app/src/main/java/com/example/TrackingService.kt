@@ -102,7 +102,15 @@ class TrackingService : Service(), SensorEventListener {
     private var lastMessageTimeMs = 0L
     private var connectionStartTimeMs = 0L
     private val backoffDelaysMs = listOf(1000L, 2000L, 4000L, 8000L, 15000L, 30000L, 45000L, 60000L)
+    // Queued raw payload JSON strings waiting to be transmitted (never pre-signed envelopes)
     private val telemetryQueue = mutableListOf<String>()
+    
+    // LRU cache for de-duplicating inbound commands by signature (prevents replay within the 5-min window)
+    private val seenInboundSignatures = object : java.util.LinkedHashMap<String, Long>(50, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, Long>?): Boolean {
+            return size > 100 // keep the last 100 signatures max
+        }
+    }
     
     private var connectivityManager: android.net.ConnectivityManager? = null
     private var networkCallback: android.net.ConnectivityManager.NetworkCallback? = null
@@ -235,6 +243,16 @@ class TrackingService : Service(), SensorEventListener {
                         val prevConfig = lastSavedConfig
                         lastSavedConfig = config
                         if (config != null && config.isPaired) {
+                            val endpointOrAuthChanged = prevConfig != null && (
+                                prevConfig.serverHost != config.serverHost ||
+                                prevConfig.serverPort != config.serverPort ||
+                                prevConfig.websocketUrl != config.websocketUrl ||
+                                prevConfig.clientId != config.clientId ||
+                                prevConfig.secretToken != config.secretToken
+                            )
+                            if (endpointOrAuthChanged) {
+                                disconnectWebSocket()
+                            }
                             reconnectAttemptCount = 0
                             connectWebSocket(config)
                             if (prevConfig != null && 
@@ -393,10 +411,14 @@ class TrackingService : Service(), SensorEventListener {
     }
 
     private fun connectWebSocket(config: com.example.data.PairingConfig) {
-        if (TrackerStateManager.connectionState.value == ConnectionState.CONNECTED) {
+        if (TrackerStateManager.connectionState.value == ConnectionState.CONNECTED && webSocket != null) {
             return // Already connected
         }
         
+        // Close any previous socket before opening a new one
+        webSocket?.cancel()
+        webSocket = null
+
         TrackerStateManager.setConnectionState(ConnectionState.CONNECTING)
         
         val isDebug = com.example.BuildConfig.DEBUG
@@ -413,19 +435,18 @@ class TrackingService : Service(), SensorEventListener {
                 .removePrefix("http://")
                 .removePrefix("wss://")
                 .removePrefix("ws://")
+                .trimEnd('/')
 
             val port = config.serverPort
 
-            if (port == 443) {
+            if (rawHost.startsWith("wss://", ignoreCase = true) || rawHost.startsWith("https://", ignoreCase = true) || port == 443) {
                 scheme = "wss://"
+            } else if (rawHost.startsWith("ws://", ignoreCase = true) || rawHost.startsWith("http://", ignoreCase = true)) {
+                scheme = if (!isDebug && isPublicHostname(host)) "wss://" else "ws://"
             } else if (isPublicHostname(host)) {
                 scheme = "wss://"
             } else {
-                if (isDebug) {
-                    scheme = "ws://"
-                } else {
-                    scheme = "wss://"
-                }
+                scheme = if (isDebug) "ws://" else "wss://"
             }
             wsUrl = "$scheme$host:$port/ws/tracker"
         }
@@ -440,6 +461,7 @@ class TrackingService : Service(), SensorEventListener {
 
         webSocket = okHttpClient.newWebSocket(request, object : WebSocketListener() {
             override fun onOpen(webSocket: WebSocket, response: Response) {
+                if (webSocket !== this@TrackingService.webSocket) return
                 connectionStartTimeMs = System.currentTimeMillis()
                 lastMessageTimeMs = System.currentTimeMillis()
                 TrackerStateManager.setConnectionState(ConnectionState.CONNECTED)
@@ -447,7 +469,7 @@ class TrackingService : Service(), SensorEventListener {
                     repository.addLog("CONNECTION", "Web portal connection established successfully!", "SUCCESS")
                     TrackerStateManager.triggerLogsUpdate()
                     
-                    // Flush queued telemetry
+                    // Flush queued telemetry - each queued payload is signed freshly at actual moment of transmission
                     val queueCopy = mutableListOf<String>()
                     synchronized(telemetryQueue) {
                         if (telemetryQueue.isNotEmpty()) {
@@ -457,8 +479,12 @@ class TrackingService : Service(), SensorEventListener {
                     }
                     if (queueCopy.isNotEmpty()) {
                         repository.addLog("CONNECTION", "Flushing ${queueCopy.size} queued telemetry frames", "INFO")
-                        for (msg in queueCopy) {
-                            webSocket.send(msg)
+                        for (item in queueCopy) {
+                            val payloadJson = extractPayloadJson(item)
+                            val sent = buildAndSendEnvelope(payloadJson)
+                            if (!sent) {
+                                enqueueTelemetry(payloadJson)
+                            }
                         }
                     }
                     
@@ -468,6 +494,7 @@ class TrackingService : Service(), SensorEventListener {
             }
 
             override fun onMessage(webSocket: WebSocket, text: String) {
+                if (webSocket !== this@TrackingService.webSocket) return
                 lastMessageTimeMs = System.currentTimeMillis()
                 
                 // Reset backoff if stable for 90s
@@ -479,6 +506,7 @@ class TrackingService : Service(), SensorEventListener {
             }
 
             override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                if (webSocket !== this@TrackingService.webSocket) return
                 TrackerStateManager.setConnectionState(ConnectionState.DISCONNECTED)
                 
                 val errorMessage = t.localizedMessage ?: t.toString()
@@ -499,6 +527,7 @@ class TrackingService : Service(), SensorEventListener {
             }
 
             override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                if (webSocket !== this@TrackingService.webSocket) return
                 TrackerStateManager.setConnectionState(ConnectionState.DISCONNECTED)
                 serviceScope.launch {
                     repository.addLog("CONNECTION", "Connection closed by portal: $reason", "WARNING")
@@ -579,10 +608,24 @@ class TrackingService : Service(), SensorEventListener {
             val root = JSONObject(jsonText)
             
             // Check security details
+            if (!root.has("clientId") || !root.has("timestamp") || !root.has("signature") || !root.has("payload")) {
+                serviceScope.launch {
+                    repository.addLog("SECURITY", "Rejected message: missing envelope fields", "ERROR")
+                }
+                return
+            }
+
             val clientId = root.optString("clientId")
             val timestamp = root.optLong("timestamp")
             val signature = root.optString("signature")
             val payloadStr = root.optString("payload")
+            
+            if (clientId.isEmpty() || signature.isEmpty() || payloadStr.isEmpty()) {
+                serviceScope.launch {
+                    repository.addLog("SECURITY", "Rejected message: empty envelope fields", "ERROR")
+                }
+                return
+            }
             
             if (clientId != config.clientId) {
                 serviceScope.launch {
@@ -610,13 +653,31 @@ class TrackingService : Service(), SensorEventListener {
                 secretToken = config.secretToken,
                 originalJson = jsonText
             )
-
             if (!isValid) {
                 serviceScope.launch {
                     repository.addLog("SECURITY", "Rejected payload: Invalid HMAC signature detected!", "ERROR")
                     TrackerStateManager.triggerLogsUpdate()
                 }
                 return
+            }
+
+            // De-duplicate by signature (done AFTER cryptographic verification to prevent cache poisoning)
+            synchronized(seenInboundSignatures) {
+                // Remove expired entries
+                val iterator = seenInboundSignatures.iterator()
+                while (iterator.hasNext()) {
+                    val entry = iterator.next()
+                    if (currentTime - entry.value > 5 * 60 * 1000L) {
+                        iterator.remove()
+                    }
+                }
+                if (seenInboundSignatures.containsKey(signature)) {
+                    serviceScope.launch {
+                        repository.addLog("SECURITY", "Rejected message: duplicate signature (already processed)", "WARNING")
+                    }
+                    return
+                }
+                seenInboundSignatures[signature] = currentTime
             }
 
             // Parse payload
@@ -919,7 +980,6 @@ class TrackingService : Service(), SensorEventListener {
         val config = lastSavedConfig ?: return
         if (!config.isPaired || TrackerStateManager.connectionState.value != ConnectionState.CONNECTED) return
 
-        val ws = webSocket ?: return
         try {
             val payload = JSONObject().apply {
                 put("type", "status_change")
@@ -928,41 +988,74 @@ class TrackingService : Service(), SensorEventListener {
                 put("battery", getBatteryLevel())
             }
 
-            val secureMsg = SecurityUtils.securePayload(
-                clientId = config.clientId,
-                secretToken = config.secretToken,
-                payloadJson = payload.toString()
-            )
-            ws.send(secureMsg)
+            sendSecurePayload(payload)
         } catch (e: Exception) {
             // Ignored
         }
     }
 
+    /**
+     * Builds a brand-new envelope with a freshly captured timestamp and recomputed HMAC signature,
+     * immediately transmitting it over the active WebSocket connection.
+     * Returns true if successfully enqueued into the WebSocket buffer, false otherwise.
+     */
+    private fun buildAndSendEnvelope(payloadJson: String): Boolean {
+        val config = lastSavedConfig ?: return false
+        if (!config.isPaired) return false
+        val ws = webSocket ?: return false
+        if (TrackerStateManager.connectionState.value != ConnectionState.CONNECTED) return false
+
+        val envelope = SecurityUtils.buildSecureEnvelope(
+            clientId = config.clientId,
+            secretToken = config.secretToken,
+            payloadJson = payloadJson
+        )
+        return ws.send(envelope)
+    }
+
+    private fun extractPayloadJson(rawOrEnvelope: String): String {
+        return try {
+            val root = JSONObject(rawOrEnvelope)
+            if (root.has("clientId") && root.has("timestamp") && root.has("signature") && root.has("payload")) {
+                root.getString("payload")
+            } else {
+                rawOrEnvelope
+            }
+        } catch (e: Exception) {
+            rawOrEnvelope
+        }
+    }
+
+    private fun enqueueTelemetry(payloadJson: String) {
+        synchronized(telemetryQueue) {
+            if (telemetryQueue.size < 50) {
+                telemetryQueue.add(payloadJson)
+            }
+        }
+    }
+
     private fun sendSecurePayload(payload: JSONObject) {
+        sendSecurePayload(payload.toString())
+    }
+
+    private fun sendSecurePayload(payloadJson: String) {
         val config = lastSavedConfig ?: return
         if (!config.isPaired) return
 
         try {
-            val secureMsg = SecurityUtils.securePayload(
-                clientId = config.clientId,
-                secretToken = config.secretToken,
-                payloadJson = payload.toString()
-            )
-            
             if (TrackerStateManager.connectionState.value == ConnectionState.CONNECTED && webSocket != null) {
-                webSocket?.send(secureMsg)
-            } else {
-                synchronized(telemetryQueue) {
-                    if (telemetryQueue.size < 50) {
-                        telemetryQueue.add(secureMsg)
-                    }
+                val sent = buildAndSendEnvelope(payloadJson)
+                if (!sent) {
+                    enqueueTelemetry(payloadJson)
                 }
+            } else {
+                enqueueTelemetry(payloadJson)
             }
         } catch (e: Exception) {
             serviceScope.launch {
-                repository.addLog("SYSTEM", "Failed sending payload to server: ${e.localizedMessage}", "ERROR")
+                repository.addLog("SYSTEM", "Failed sending payload to server, requeuing: ${e.localizedMessage}", "ERROR")
             }
+            enqueueTelemetry(payloadJson)
         }
     }
 
