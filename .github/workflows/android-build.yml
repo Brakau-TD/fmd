@@ -14,10 +14,10 @@ jobs:
 
     steps:
       - name: Checkout Repository
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '21'
@@ -26,10 +26,11 @@ jobs:
         run: |
           yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --licenses || true
 
-      - name: Set up Gradle 9.3.1
-        uses: gradle/actions/setup-gradle@v4
-        with:
-          gradle-version: '9.3.1'
+      - name: Install Gradle 9.3.1
+        run: |
+          curl -sL https://services.gradle.org/distributions/gradle-9.3.1-bin.zip -o /tmp/gradle.zip
+          sudo unzip -q -d /opt/gradle /tmp/gradle.zip
+          echo "/opt/gradle/gradle-9.3.1/bin" >> $GITHUB_PATH
 
       - name: Prepare .env and debug.keystore
         run: |
@@ -57,7 +58,12 @@ jobs:
           fi
 
       - name: Build Debug APK
-        run: gradle :app:assembleDebug --no-daemon
+        env:
+          JAVA_TOOL_OPTIONS: "-Djava.awt.headless=true"
+        run: |
+          gradle :app:assembleDebug \
+            -Pkotlin.compiler.execution.strategy=daemon \
+            -Djava.awt.headless=true
 
       - name: Upload Debug APK Artifact
         uses: actions/upload-artifact@v4
