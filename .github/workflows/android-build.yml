@@ -22,6 +22,10 @@ jobs:
           distribution: 'temurin'
           java-version: '21'
 
+      - name: Disable false-positive Java stderr problem matcher
+        run: |
+          echo "::remove-matcher owner=java::"
+
       - name: Accept Android SDK Licenses
         run: |
           yes | ${ANDROID_HOME}/cmdline-tools/latest/bin/sdkmanager --licenses || true
@@ -58,15 +62,14 @@ jobs:
           fi
 
       - name: Build Debug APK
-        env:
-          JAVA_TOOL_OPTIONS: "-Djava.awt.headless=true"
         run: |
-          gradle :app:assembleDebug \
-            -Pkotlin.compiler.execution.strategy=daemon \
-            -Djava.awt.headless=true
+          set -o pipefail
+          sed -i '/kotlin.compiler.execution.strategy/d' gradle.properties
+          gradle :app:assembleDebug --no-daemon -Djava.awt.headless=true 2>&1 \
+            | grep -vE 'AWT-EventQueue-0|ksp\.com\.intellij\.openapi|java\.awt\.EventDispatchThread|java\.awt\.EventQueue|java\.awt\.event\.InvocationEvent|AccessController\.doPrivileged|ProtectionDomain\$JavaSecurityAccessImpl'
 
       - name: Upload Debug APK Artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v6
         with:
           name: find-my-device-debug-apk
           path: app/build/outputs/apk/debug/app-debug.apk
