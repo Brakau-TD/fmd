@@ -1,19 +1,18 @@
 <resources>
     <string name="app_name">Find My Device</string>
-    <string name="target_server_header">TARGET SERVER • SERVER-ZIELE</string>
-    <string name="target_server_title">Target Server &amp; Endpoints</string>
-    <string name="target_server_subtitle">Enter a target server or switch directly between saved server endpoints.</string>
-    <string name="target_server_add_button">New Target</string>
-    <string name="target_server_quick_entry_toggle">Enter Target Server</string>
-    <string name="target_server_name_label">Server Name / Label (Optional)</string>
-    <string name="target_server_host_label">Target Server Host or URL</string>
+    <string name="target_server_header"> SERVERS &amp; PAIRING</string>
+    <string name="target_server_title">Tracking Targets</string>
+    <string name="target_server_subtitle">Tap any server below to switch where your location is sent, or pair a new target anytime.</string>
+    <string name="target_server_add_button">Add Target</string>
+    <string name="target_server_quick_entry_toggle">Quick Add Server</string>
+    <string name="target_server_name_label">Friendly Name (Optional)</string>
+    <string name="target_server_host_label">Server Address or URL</string>
     <string name="target_server_port_label">Port</string>
     <string name="target_server_ws_url_label">Custom WebSocket URL (Optional)</string>
-    <string name="target_server_switch_connect_button">Switch &amp; Connect</string>
-    <string name="target_server_save_only_button">Save Target</string>
-    <string name="target_server_saved_list_label">SAVED SERVER TARGETS (TAP TO SWITCH)</string>
+    <string name="target_server_switch_connect_button">Save &amp; Connect</string>
+    <string name="target_server_save_only_button">Save for Later</string>
+    <string name="target_server_saved_list_label">Saved Targets</string>
     <string name="target_server_active_badge">ACTIVE</string>
-    <string name="target_server_switch_button">Switch</string>
-    <string name="target_server_empty_hint">No saved server targets yet. Enter a server host above to save and connect.</string>
+    <string name="target_server_switch_button">Use Target</string>
+    <string name="target_server_empty_hint">No targets added yet. Tap \"Add Target\" or \"Scan QR\" above to connect your first server.</string>
 </resources>
-

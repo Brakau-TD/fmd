@@ -3,6 +3,7 @@ package com.example
 import android.Manifest
 import android.content.pm.PackageManager
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
@@ -16,8 +17,6 @@ import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
-import androidx.compose.foundation.verticalScroll
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -26,7 +25,6 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -35,21 +33,20 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.foundation.pager.HorizontalPager
-import androidx.compose.foundation.pager.rememberPagerState
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.CellTower
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Circle
 import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.FlashOn
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Key
-import androidx.compose.material.icons.filled.LeakAdd
-import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.MotionPhotosOn
 import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.NotificationsActive
@@ -57,12 +54,13 @@ import androidx.compose.material.icons.filled.Power
 import androidx.compose.material.icons.filled.QrCodeScanner
 import androidx.compose.material.icons.filled.Radio
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.SettingsInputComponent
 import androidx.compose.material.icons.filled.Share
-import androidx.compose.material.icons.filled.SignalWifi4Bar
 import androidx.compose.material.icons.filled.Terminal
+import androidx.compose.material.icons.filled.Visibility
+import androidx.compose.material.icons.filled.VisibilityOff
 import androidx.compose.material.icons.filled.Warning
-import androidx.compose.material.icons.outlined.Cancel
 import androidx.compose.material.icons.outlined.PowerOff
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -70,16 +68,22 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
+import androidx.compose.material3.SliderDefaults
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -88,6 +92,7 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -95,25 +100,21 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.scale
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
-import com.google.mlkit.vision.barcode.common.Barcode
-import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
-import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
-import android.widget.Toast
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.material3.Slider
-import androidx.compose.material3.SliderDefaults
-import androidx.compose.material.icons.filled.Settings
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.data.PairingConfig
 import com.example.data.ServerTarget
 import com.example.data.TrackerLog
 import com.example.state.ConnectionState
@@ -121,7 +122,6 @@ import com.example.ui.PastePayloadDialog
 import com.example.ui.ServerTargetDialog
 import com.example.ui.ServerTargetSwitcherCard
 import com.example.ui.theme.CyberBlack
-import org.json.JSONObject
 import com.example.ui.theme.CyberGrayBorder
 import com.example.ui.theme.CyberGrayDeep
 import com.example.ui.theme.CyberGrayLight
@@ -133,6 +133,10 @@ import com.example.ui.theme.TextSecondary
 import com.example.ui.theme.TrackerBlue
 import com.example.ui.theme.TrackerGreen
 import com.example.ui.theme.TrackerRed
+import com.google.mlkit.vision.barcode.common.Barcode
+import com.google.mlkit.vision.codescanner.GmsBarcodeScannerOptions
+import com.google.mlkit.vision.codescanner.GmsBarcodeScanning
+import org.json.JSONObject
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -140,7 +144,7 @@ import java.util.Locale
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        
+
         // Show on lock screen and turn screen on for emergency alerts
         if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O_MR1) {
             setShowWhenLocked(true)
@@ -149,7 +153,7 @@ class MainActivity : ComponentActivity() {
             @Suppress("DEPRECATION")
             window.addFlags(
                 android.view.WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
-                android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+                    android.view.WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
             )
         }
 
@@ -166,18 +170,15 @@ class MainActivity : ComponentActivity() {
 fun MainContainer() {
     val context = LocalContext.current
     val viewModel: TrackerViewModel = viewModel()
-    
-    // Permission states
+
     var permissionsGranted by remember {
         mutableStateOf(
             ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED &&
-            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+                ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
         )
     }
 
-
     val launcher = rememberLauncherForActivityResult(
-
         contract = ActivityResultContracts.RequestMultiplePermissions()
     ) { results ->
         val fineLocation = results[Manifest.permission.ACCESS_FINE_LOCATION] ?: false
@@ -200,7 +201,6 @@ fun MainContainer() {
             }
             launcher.launch(permissionsToRequest.toTypedArray())
         } else {
-            // Auto start background tracking service once permissions are valid
             viewModel.startService(context)
         }
     }
@@ -256,7 +256,7 @@ fun PermissionRequiredScreen(
             )
 
             Text(
-                text = "Permissions Required",
+                text = "Permissions Needed",
                 style = MaterialTheme.typography.headlineMedium,
                 color = TextPrimary,
                 fontWeight = FontWeight.Bold,
@@ -266,7 +266,7 @@ fun PermissionRequiredScreen(
             Spacer(modifier = Modifier.height(8.dp))
 
             Text(
-                text = "To track your phone securely, 'Find My Device' requires active GPS Location tracking and Camera access to pair with the client web portal using a secure QR code.",
+                text = "To help locate your phone and pair with your tracking server via QR code, Find My Device needs Location and Camera access.",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextSecondary,
                 textAlign = TextAlign.Center,
@@ -285,7 +285,7 @@ fun PermissionRequiredScreen(
                     .testTag("request_permissions_button")
             ) {
                 Text(
-                    text = "Grant Required Permissions",
+                    text = "Allow Location & Camera",
                     fontWeight = FontWeight.Bold,
                     fontSize = 16.sp
                 )
@@ -310,11 +310,13 @@ fun PermissionRequiredScreen(
                     Icon(
                         imageVector = Icons.Default.SettingsInputComponent,
                         contentDescription = "Settings",
-                        modifier = Modifier.padding(end = 8.dp).size(20.dp),
+                        modifier = Modifier
+                            .padding(end = 8.dp)
+                            .size(20.dp),
                         tint = TrackerBlue
                     )
                     Text(
-                        text = "Open App System Settings",
+                        text = "Open System Settings",
                         fontWeight = FontWeight.SemiBold,
                         fontSize = 15.sp
                     )
@@ -328,7 +330,7 @@ fun PermissionRequiredScreen(
 @Composable
 fun TrackerDashboard(viewModel: TrackerViewModel) {
     val context = LocalContext.current
-    
+
     val pairing by viewModel.pairingConfig.collectAsState()
     val connectionState by viewModel.connectionState.collectAsState()
     val isRunning by viewModel.isServiceRunning.collectAsState()
@@ -336,14 +338,17 @@ fun TrackerDashboard(viewModel: TrackerViewModel) {
     val lastLoc by viewModel.lastLocation.collectAsState()
     val isPowerSaving by viewModel.isPowerSaving.collectAsState()
     val logs by viewModel.logs.collectAsState()
-    
-    // UI temporary flags
+
+    // Global toggle to reveal/hide all technical telemetry, raw logs, and test tools
+    var showTechnicalDetails by rememberSaveable { mutableStateOf(false) }
+
+    // Dialog states
     var showPastePayloadDialog by remember { mutableStateOf(false) }
     var showManualPairDialog by remember { mutableStateOf(false) }
     var showServerTargetDialog by remember { mutableStateOf(false) }
     var editingServerTarget by remember { mutableStateOf<ServerTarget?>(null) }
 
-    // Background location state
+    // Background location check
     var backgroundLocationGranted by remember {
         mutableStateOf(
             if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
@@ -363,7 +368,7 @@ fun TrackerDashboard(viewModel: TrackerViewModel) {
     var isBatteryOptimized by remember {
         mutableStateOf(!BatteryOptimizationHelper.isIgnoringBatteryOptimizations(context))
     }
-    
+
     val batteryOptimizationLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.StartActivityForResult()
     ) {
@@ -375,54 +380,112 @@ fun TrackerDashboard(viewModel: TrackerViewModel) {
     val isFlashingRunning by viewModel.isFlashingRunning.collectAsState()
     val activeMessage by viewModel.activeMessage.collectAsState()
 
+    val launchQrScanner: () -> Unit = {
+        val options = GmsBarcodeScannerOptions.Builder()
+            .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
+            .enableAutoZoom()
+            .build()
+        val scanner = GmsBarcodeScanning.getClient(context, options)
+        scanner.startScan()
+            .addOnSuccessListener { barcode ->
+                val qrText = barcode.rawValue
+                if (qrText != null) {
+                    viewModel.processPairingQR(qrText, context)
+                }
+            }
+            .addOnCanceledListener { }
+            .addOnFailureListener { e ->
+                Toast.makeText(context, "Could not scan QR code: ${e.message}", Toast.LENGTH_SHORT).show()
+            }
+    }
+
+    val friendlyTopSubtitle = when {
+        !isRunning -> "Location sharing is paused"
+        connectionState == ConnectionState.CONNECTED -> "Sharing active • Connected to target"
+        connectionState == ConnectionState.CONNECTING -> "Connecting to target server..."
+        else -> "Service running • Waiting for server"
+    }
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
-                    Column(
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
+                    Column(modifier = Modifier.fillMaxWidth()) {
                         Text(
                             text = "Find My Device",
-                            fontWeight = FontWeight.Normal,
-                            fontSize = 22.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 21.sp,
                             color = TextPrimary
                         )
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
                             modifier = Modifier.padding(top = 2.dp)
                         ) {
                             Box(
                                 modifier = Modifier
                                     .size(8.dp)
                                     .clip(CircleShape)
-                                    .background(if (isRunning) TrackerGreen else TextSecondary)
+                                    .background(
+                                        when {
+                                            !isRunning -> TextSecondary
+                                            connectionState == ConnectionState.CONNECTED -> TrackerGreen
+                                            connectionState == ConnectionState.CONNECTING -> TrackerBlue
+                                            else -> TrackerRed
+                                        }
+                                    )
                             )
                             Text(
-                                text = if (isRunning) "Connected • 12ms Latency" else "Disconnected",
-                                fontSize = 11.sp,
+                                text = friendlyTopSubtitle,
+                                fontSize = 12.sp,
                                 fontWeight = FontWeight.Medium,
-                                color = if (isRunning) TrackerGreen else TextSecondary,
-                                letterSpacing = 0.5.sp
+                                color = if (isRunning && connectionState == ConnectionState.CONNECTED) TrackerGreen else TextSecondary
                             )
                         }
                     }
                 },
                 actions = {
+                    // Quick 1-tap toggle in TopBar to show/hide technical data
+                    FilterChip(
+                        selected = showTechnicalDetails,
+                        onClick = { showTechnicalDetails = !showTechnicalDetails },
+                        label = {
+                            Text(
+                                text = if (showTechnicalDetails) "All Data: ON" else "All Data",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = if (showTechnicalDetails) Icons.Default.Visibility else Icons.Default.VisibilityOff,
+                                contentDescription = "Toggle All Data",
+                                modifier = Modifier.size(16.dp)
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = TrackerBlue.copy(alpha = 0.16f),
+                            selectedLabelColor = TrackerBlue,
+                            selectedLeadingIconColor = TrackerBlue
+                        ),
+                        modifier = Modifier
+                            .padding(end = 4.dp)
+                            .testTag("top_bar_technical_toggle")
+                    )
+
                     IconButton(
                         onClick = { shareLogFile(context, logs) },
                         modifier = Modifier.testTag("export_logs_action_button")
                     ) {
                         Icon(
                             imageVector = Icons.Default.Share,
-                            contentDescription = "Export Logs",
-                            tint = TrackerGreen
+                            contentDescription = "Share Activity Logs",
+                            tint = TrackerBlue
                         )
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = CyberBlack, // Transparent blends with body background
+                    containerColor = CyberBlack,
                     titleContentColor = TextPrimary
                 )
             )
@@ -434,226 +497,106 @@ fun TrackerDashboard(viewModel: TrackerViewModel) {
                 .fillMaxSize()
                 .padding(innerPadding)
         ) {
-            val pagerState = rememberPagerState(pageCount = { 2 })
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 18.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // 1. Friendly Status Overview Card (with expandable technical telemetry)
+                StatusOverviewCard(
+                    isServiceRunning = isRunning,
+                    connectionState = connectionState,
+                    trackerStatus = trackerStatus,
+                    isPowerSaving = isPowerSaving,
+                    lastLocation = lastLoc,
+                    pairingConfig = pairing,
+                    showTechnicalDetails = showTechnicalDetails,
+                    onToggleService = {
+                        if (isRunning) viewModel.stopService(context)
+                        else viewModel.startService(context)
+                    },
+                    onClientPortalClick = {
+                        editingServerTarget = null
+                        showServerTargetDialog = true
+                    }
+                )
 
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(horizontal = 20.dp),
-                pageSpacing = 16.dp
-            ) { page ->
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(vertical = 20.dp)
-                ) {
-                    if (page == 0) {
-                        Column(
-                            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())
-                        ) {
-                            // 1. Connection Radar & Status Overview
-                            StatusOverviewCard(
-                                isServiceRunning = isRunning,
-                                connectionState = connectionState,
-                                trackerStatus = trackerStatus,
-                                isPowerSaving = isPowerSaving,
-                                lastLocation = lastLoc,
-                                pairingConfig = pairing,
-                                onToggleService = {
-                                    if (isRunning) viewModel.stopService(context) 
-                                    else viewModel.startService(context)
-                                },
-                                onClientPortalClick = {
-                                    editingServerTarget = null
-                                    showServerTargetDialog = true
-                                }
-                            )
-            
-                            if (!backgroundLocationGranted && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .border(1.dp, TrackerRed, RoundedCornerShape(16.dp)),
-                                    colors = CardDefaults.cardColors(containerColor = CyberGrayDeep),
-                                    shape = RoundedCornerShape(16.dp)
-                                ) {
-                                    Column(modifier = Modifier.padding(16.dp)) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(
-                                                imageVector = Icons.Default.Warning,
-                                                contentDescription = "Warning",
-                                                tint = TrackerRed,
-                                                modifier = Modifier.size(20.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text(
-                                                text = "BACKGROUND ACCESS REQUIRED",
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = TrackerRed,
-                                                fontFamily = FontFamily.Monospace
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        Text(
-                                            text = "To allow the tracker to run automatically on boot, update, and when locked, please change location access to 'Allow all the time' in the system settings.",
-                                            fontSize = 11.sp,
-                                            color = TextSecondary
-                                        )
-                                        Spacer(modifier = Modifier.height(12.dp))
-                                        Button(
-                                            onClick = {
-                                                bgLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
-                                            },
-                                            colors = ButtonDefaults.buttonColors(containerColor = TrackerRed, contentColor = Color.White),
-                                            shape = RoundedCornerShape(8.dp),
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(40.dp)
-                                                .testTag("grant_background_location_button")
-                                        ) {
-                                            Text("Grant 'Allow all the time' Access", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-                                }
-                            }
-            
-                            if (isBatteryOptimized) {
-                                Spacer(modifier = Modifier.height(12.dp))
-                                Card(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .border(1.dp, TrackerRed, RoundedCornerShape(16.dp)),
-                                    colors = CardDefaults.cardColors(containerColor = CyberGrayDeep),
-                                    shape = RoundedCornerShape(16.dp)
-                                ) {
-                                    Column(modifier = Modifier.padding(16.dp)) {
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            Icon(
-                                                imageVector = Icons.Default.Warning,
-                                                contentDescription = "Warning",
-                                                tint = TrackerRed,
-                                                modifier = Modifier.size(20.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text(
-                                                text = "BATTERY OPTIMIZATION ACTIVE",
-                                                fontSize = 11.sp,
-                                                fontWeight = FontWeight.Bold,
-                                                color = TrackerRed,
-                                                fontFamily = FontFamily.Monospace
-                                            )
-                                        }
-                                        Spacer(modifier = Modifier.height(6.dp))
-                                        Text(
-                                            text = "To prevent the system from killing the tracker in the background when the phone is idle, you must disable battery optimization for this app.",
-                                            fontSize = 11.sp,
-                                            color = TextSecondary
-                                        )
-                                        Spacer(modifier = Modifier.height(12.dp))
-                                        Button(
-                                            onClick = {
-                                                try {
-                                                    batteryOptimizationLauncher.launch(BatteryOptimizationHelper.getBatteryOptimizationIntent(context))
-                                                } catch (e: Exception) {
-                                                    // Fallback if intent fails
-                                                }
-                                            },
-                                            colors = ButtonDefaults.buttonColors(containerColor = TrackerRed, contentColor = Color.White),
-                                            shape = RoundedCornerShape(8.dp),
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .height(40.dp)
-                                                .testTag("disable_battery_optimization_button")
-                                        ) {
-                                            Text("Disable Battery Optimization", fontSize = 11.sp, fontWeight = FontWeight.Bold)
-                                        }
-                                    }
-                                }
-                            }
+                // System Warnings (Friendly & Actionable)
+                if (!backgroundLocationGranted && android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.Q) {
+                    FriendlySystemNoticeCard(
+                        title = "Allow Background Location",
+                        description = "To keep tracking working when your phone is in your pocket or locked, set location access to 'Allow all the time'.",
+                        buttonText = "Enable Background Location",
+                        buttonTestTag = "grant_background_location_button",
+                        onClick = {
+                            bgLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                        }
+                    )
+                }
 
-                            Spacer(modifier = Modifier.height(16.dp))
-
-                            // Target Server Input & Multi-Server Switcher
-                            ServerTargetSwitcherCard(
-                                viewModel = viewModel,
-                                onOpenDialogForTarget = { target ->
-                                    editingServerTarget = target
-                                    showServerTargetDialog = true
-                                }
-                            )
-
-                            if (pairing == null || !pairing!!.isPaired) {
-                                Spacer(modifier = Modifier.height(16.dp))
-                                PairingPortalCard(
-                                    viewModel = viewModel,
-                                    onPasteClick = { showPastePayloadDialog = true },
-                                    onScanClick = {
-                                        val options = GmsBarcodeScannerOptions.Builder()
-                                            .setBarcodeFormats(Barcode.FORMAT_QR_CODE)
-                                            .enableAutoZoom()
-                                            .build()
-                                        val scanner = GmsBarcodeScanning.getClient(context, options)
-                                        scanner.startScan()
-                                            .addOnSuccessListener { barcode ->
-                                                val qrText = barcode.rawValue
-                                                if (qrText != null) {
-                                                    viewModel.processPairingQR(qrText, context)
-                                                }
-                                            }
-                                            .addOnCanceledListener {
-                                                // Task canceled
-                                            }
-                                            .addOnFailureListener { e ->
-                                                Toast.makeText(context, "Scan failed: ${e.message}", Toast.LENGTH_SHORT).show()
-                                            }
-                                    },
-                                    onManualClick = { showManualPairDialog = true }
-                                )
+                if (isBatteryOptimized) {
+                    FriendlySystemNoticeCard(
+                        title = "Keep Tracking Reliable",
+                        description = "Turn off battery restrictions for this app so Android doesn't pause location sharing while your phone is idle.",
+                        buttonText = "Allow Unrestricted Battery",
+                        buttonTestTag = "disable_battery_optimization_button",
+                        onClick = {
+                            try {
+                                batteryOptimizationLauncher.launch(BatteryOptimizationHelper.getBatteryOptimizationIntent(context))
+                            } catch (e: Exception) {
+                                // Fallback if intent fails
                             }
                         }
-                    } else {
-                        // Page 1: Settings, Logs, Command Console
-                        Column(
-                            modifier = Modifier.weight(1f).verticalScroll(rememberScrollState())
-                        ) {
-                            if (pairing == null || !pairing!!.isPaired) {
-                                TerminalLogsConsole(
-                                    logs = logs,
-                                    onClearLogs = { viewModel.clearLogs() },
-                                    onDisconnect = null,
-                                    onExportLogs = {
-                                        shareLogFile(context, logs)
-                                    }
-                                )
-                            } else {
-                                // Location Reporting Frequency Customizer
-                                TrackingFrequencySettingsCard(viewModel = viewModel)
-        
-                                Spacer(modifier = Modifier.height(16.dp))
-        
-                                // Terminal Logs console
-                                TerminalLogsConsole(
-                                    logs = logs,
-                                    onClearLogs = { viewModel.clearLogs() },
-                                    onDisconnect = { viewModel.disconnect(context) },
-                                    onExportLogs = {
-                                        shareLogFile(context, logs)
-                                    }
-                                )
-        
-                                Spacer(modifier = Modifier.height(16.dp))
-                                
-                                // Collapsible Simulator Control Deck (Portal Command Console at the bottom)
-                                ClientSimulatorDeck(viewModel = viewModel)
-                            }
-                        }
+                    )
+                }
+
+                // 2. Tracking Targets & Pairing Card (Always visible — switch, add, remove, or pair anytime!)
+                ServerTargetSwitcherCard(
+                    viewModel = viewModel,
+                    showTechnicalDetails = showTechnicalDetails,
+                    onOpenDialogForTarget = { target ->
+                        editingServerTarget = target
+                        showServerTargetDialog = true
+                    },
+                    onScanQrClick = launchQrScanner,
+                    onPasteClick = { showPastePayloadDialog = true },
+                    onManualPairClick = { showManualPairDialog = true }
+                )
+
+                // 3. Location Update Intervals Card (Always visible right on the main screen!)
+                TrackingFrequencySettingsCard(viewModel = viewModel)
+
+                // 4. Activity Summary & "Show All Data" Toggle Card
+                ActivityAndDetailsToggleCard(
+                    logs = logs,
+                    showTechnicalDetails = showTechnicalDetails,
+                    onToggleTechnicalDetails = { showTechnicalDetails = it }
+                )
+
+                // 5. Full Technical Data, Logs Console & Remote Simulator (Shown when toggle is ON)
+                AnimatedVisibility(visible = showTechnicalDetails) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        TerminalLogsConsole(
+                            logs = logs,
+                            onClearLogs = { viewModel.clearLogs() },
+                            onDisconnect = if (pairing?.isPaired == true) {
+                                { viewModel.disconnect(context) }
+                            } else null,
+                            onExportLogs = { shareLogFile(context, logs) }
+                        )
+
+                        ClientSimulatorDeck(viewModel = viewModel)
                     }
                 }
+
+                Spacer(modifier = Modifier.height(16.dp))
             }
 
-            // Manual Pairing Setup Dialogue (Highly useful in Emulators)
+            // Dialogs
             if (showManualPairDialog) {
                 ManualPairingDialog(
                     viewModel = viewModel,
@@ -676,7 +619,7 @@ fun TrackerDashboard(viewModel: TrackerViewModel) {
                 )
             }
 
-            // EMERGENCY COMMAND ACTION OVERLAYS
+            // Emergency Command Overlays
             EmergencyActionOverlays(
                 isFlashing = isFlashingRunning,
                 isAlarm = isAlarmRunning,
@@ -687,7 +630,60 @@ fun TrackerDashboard(viewModel: TrackerViewModel) {
     }
 }
 
-// --- Status Overview Composables ---
+@Composable
+private fun FriendlySystemNoticeCard(
+    title: String,
+    description: String,
+    buttonText: String,
+    buttonTestTag: String,
+    onClick: () -> Unit
+) {
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, TrackerRed.copy(alpha = 0.5f), RoundedCornerShape(20.dp)),
+        colors = CardDefaults.cardColors(containerColor = CyberGrayDeep),
+        shape = RoundedCornerShape(20.dp)
+    ) {
+        Column(modifier = Modifier.padding(16.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Warning,
+                    contentDescription = "Attention",
+                    tint = TrackerRed,
+                    modifier = Modifier.size(20.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Text(
+                    text = title,
+                    fontSize = 14.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = TextPrimary
+                )
+            }
+            Spacer(modifier = Modifier.height(6.dp))
+            Text(
+                text = description,
+                fontSize = 12.sp,
+                color = TextSecondary
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Button(
+                onClick = onClick,
+                colors = ButtonDefaults.buttonColors(containerColor = TrackerRed, contentColor = Color.White),
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(44.dp)
+                    .testTag(buttonTestTag)
+            ) {
+                Text(buttonText, fontSize = 13.sp, fontWeight = FontWeight.Bold)
+            }
+        }
+    }
+}
+
+// --- Status Overview Composable ---
 
 @Composable
 fun StatusOverviewCard(
@@ -696,9 +692,531 @@ fun StatusOverviewCard(
     trackerStatus: String,
     isPowerSaving: Boolean,
     lastLocation: android.location.Location?,
-    pairingConfig: com.example.data.PairingConfig?,
+    pairingConfig: PairingConfig?,
+    showTechnicalDetails: Boolean = false,
     onToggleService: () -> Unit,
     onClientPortalClick: () -> Unit = {}
+) {
+    val hasServer = pairingConfig != null && pairingConfig.serverHost.isNotEmpty()
+    val serverLabel = when {
+        !hasServer -> "No target chosen"
+        pairingConfig!!.websocketUrl.isNotEmpty() -> pairingConfig.websocketUrl
+        else -> "${pairingConfig.serverHost}:${pairingConfig.serverPort}"
+    }
+
+    val friendlyHeadline = when {
+        !isServiceRunning -> "Tracking Paused"
+        connectionState == ConnectionState.CONNECTED -> "Sharing Location"
+        connectionState == ConnectionState.CONNECTING -> "Connecting..."
+        hasServer -> "Waiting for Server"
+        else -> "Ready to Set Up"
+    }
+
+    val friendlyExplanation = when {
+        !isServiceRunning -> "Tap Start below to resume background location sharing."
+        connectionState == ConnectionState.CONNECTED -> "Connected to $serverLabel"
+        connectionState == ConnectionState.CONNECTING -> "Reaching $serverLabel..."
+        hasServer -> "Cannot reach $serverLabel right now. Will retry automatically."
+        else -> "Add or select a tracking target below to begin sharing."
+    }
+
+    val statusColor = when {
+        !isServiceRunning -> TextSecondary
+        connectionState == ConnectionState.CONNECTED -> TrackerGreen
+        connectionState == ConnectionState.CONNECTING -> TrackerBlue
+        else -> TrackerRed
+    }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, CyberGrayBorder, RoundedCornerShape(24.dp)),
+        colors = CardDefaults.cardColors(containerColor = CyberGrayDeep),
+        shape = RoundedCornerShape(24.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp)
+        ) {
+            // Top Row: Friendly Status + Big Start/Pause Button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    val infiniteTransition = rememberInfiniteTransition(label = "pulse")
+                    val pulseAlpha by infiniteTransition.animateFloat(
+                        initialValue = 0.35f,
+                        targetValue = 1.0f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(900, easing = LinearEasing),
+                            repeatMode = RepeatMode.Reverse
+                        ),
+                        label = "pulseAlpha"
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .size(44.dp)
+                            .clip(CircleShape)
+                            .background(statusColor.copy(alpha = 0.14f)),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = if (isServiceRunning && connectionState == ConnectionState.CONNECTED)
+                                Icons.Default.CheckCircle
+                            else
+                                Icons.Default.Circle,
+                            contentDescription = "Status",
+                            tint = statusColor,
+                            modifier = Modifier
+                                .size(22.dp)
+                                .alpha(if (connectionState == ConnectionState.CONNECTING) pulseAlpha else 1.0f)
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.width(12.dp))
+
+                    Column {
+                        Text(
+                            text = friendlyHeadline,
+                            fontSize = 20.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = TextPrimary
+                        )
+                        Text(
+                            text = friendlyExplanation,
+                            fontSize = 12.sp,
+                            color = TextSecondary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.width(10.dp))
+
+                Button(
+                    onClick = onToggleService,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isServiceRunning) TrackerRed.copy(alpha = 0.15f) else TrackerGreen,
+                        contentColor = if (isServiceRunning) TrackerRed else Color.White
+                    ),
+                    shape = RoundedCornerShape(12.dp),
+                    modifier = Modifier
+                        .height(48.dp)
+                        .testTag("toggle_service_button")
+                ) {
+                    Icon(
+                        imageVector = if (isServiceRunning) Icons.Outlined.PowerOff else Icons.Default.Power,
+                        contentDescription = "Toggle Tracking",
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (isServiceRunning) "Pause" else "Start",
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 13.sp
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Clean 2-Card Summary Grid: Current Target & Activity Mode
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                // Active Target Summary Pill
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(CyberBlack)
+                        .border(1.dp, CyberGrayBorder, RoundedCornerShape(14.dp))
+                        .clickable { onClientPortalClick() }
+                        .padding(12.dp)
+                        .testTag("status_client_portal_row")
+                ) {
+                    DetailRow(
+                        label = "Active Target",
+                        value = serverLabel,
+                        color = TextPrimary,
+                        icon = Icons.Default.CellTower
+                    )
+                }
+
+                // Activity & Battery Mode Pill
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(CyberBlack)
+                        .border(1.dp, CyberGrayBorder, RoundedCornerShape(14.dp))
+                        .padding(12.dp)
+                ) {
+                    DetailRow(
+                        label = "Tracking Mode",
+                        value = if (isPowerSaving) "Battery Saver (Idle)" else if (isServiceRunning) "Active (Moving)" else "Paused",
+                        color = if (isPowerSaving) TrackerBlue else if (isServiceRunning) TrackerGreen else TextSecondary,
+                        icon = Icons.Default.MotionPhotosOn
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Friendly Last Location Bar
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(CyberBlack)
+                    .border(1.dp, CyberGrayBorder, RoundedCornerShape(14.dp))
+                    .padding(12.dp)
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.GpsFixed,
+                            contentDescription = "GPS Status",
+                            tint = if (lastLocation != null) TrackerGreen else TrackerBlue,
+                            modifier = Modifier.size(20.dp)
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
+                        Column {
+                            Text(
+                                text = "Last Location Check",
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                color = TextSecondary
+                            )
+                            if (lastLocation != null) {
+                                val timeFormatted = remember(lastLocation.time) {
+                                    SimpleDateFormat("HH:mm:ss", Locale.getDefault()).format(Date(lastLocation.time))
+                                }
+                                Text(
+                                    text = "Updated at $timeFormatted • Accurate to ~${lastLocation.accuracy.toInt()}m",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = TextPrimary
+                                )
+                            } else {
+                                Text(
+                                    text = if (isServiceRunning) "Waiting for GPS signal..." else "Start tracking to get GPS position",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.Medium,
+                                    color = TextSecondary
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+
+            // Expandable Technical Telemetry Section (visible when "All Data" toggle is ON)
+            AnimatedVisibility(visible = showTechnicalDetails) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp)
+                        .clip(RoundedCornerShape(14.dp))
+                        .background(CyberGrayLight.copy(alpha = 0.55f))
+                        .border(1.dp, CyberGrayBorder, RoundedCornerShape(14.dp))
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    Text(
+                        text = "TECHNICAL TELEMETRY & SECURITY",
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TrackerBlue,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Text(
+                        text = "Connection State: ${connectionState.name}  •  Raw Status: $trackerStatus",
+                        fontSize = 11.sp,
+                        color = TextPrimary,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Text(
+                        text = "Pairing: ${if (pairingConfig?.isPaired == true) "PAIRED (HMAC-SHA256)" else "UNPAIRED"}  •  Client ID: ${pairingConfig?.clientId?.ifEmpty { "None" } ?: "None"}",
+                        fontSize = 11.sp,
+                        color = if (pairingConfig?.isPaired == true) TextGreen else TextRed,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    if (lastLocation != null) {
+                        Text(
+                            text = String.format(
+                                Locale.US,
+                                "Coordinates: %.6f, %.6f (Acc: %.1fm, Speed: %.1fm/s)",
+                                lastLocation.latitude,
+                                lastLocation.longitude,
+                                lastLocation.accuracy,
+                                lastLocation.speed
+                            ),
+                            fontSize = 11.sp,
+                            color = TextPrimary,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    } else {
+                        Text(
+                            text = "Coordinates: No GPS fix acquired yet",
+                            fontSize = 11.sp,
+                            color = TextSecondary,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun DetailRow(label: String, value: String, color: Color, icon: ImageVector) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier.padding(vertical = 2.dp)
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = color.copy(alpha = 0.85f),
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Column {
+            Text(
+                text = label,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Medium,
+                color = TextSecondary
+            )
+            Text(
+                text = value,
+                fontSize = 13.sp,
+                fontWeight = FontWeight.Bold,
+                color = color,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
+    }
+}
+
+// --- Location Reporting Frequency Customizer ---
+
+@Composable
+fun TrackingFrequencySettingsCard(viewModel: TrackerViewModel) {
+    val pairingConfig by viewModel.pairingConfig.collectAsState()
+
+    val currentActive = pairingConfig?.locationIntervalSec ?: 10
+    val currentStationary = pairingConfig?.stationaryIntervalSec ?: 300
+
+    var activeValue by remember(currentActive) { mutableStateOf(currentActive.toFloat()) }
+    var stationaryValue by remember(currentStationary) { mutableStateOf(currentStationary.toFloat()) }
+
+    Card(
+        modifier = Modifier
+            .fillMaxWidth()
+            .border(1.dp, CyberGrayBorder, RoundedCornerShape(24.dp)),
+        colors = CardDefaults.cardColors(containerColor = CyberGrayDeep),
+        shape = RoundedCornerShape(24.dp)
+    ) {
+        Column(
+            modifier = Modifier.padding(18.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(TrackerGreen.copy(alpha = 0.12f)),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Settings,
+                        contentDescription = "Update Intervals",
+                        tint = TrackerGreen,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Column {
+                    Text(
+                        text = "Update Intervals",
+                        fontSize = 18.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
+                    )
+                    Text(
+                        text = "Choose how often your location is sent",
+                        fontSize = 12.sp,
+                        color = TextSecondary
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Quick 1-Tap Presets
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                val presets = listOf(
+                    Triple("Fast", 5, 60),
+                    Triple("Balanced", 15, 300),
+                    Triple("Battery Saver", 60, 900)
+                )
+                presets.forEach { (label, activeSec, stationarySec) ->
+                    val isSelected = activeValue.toInt() == activeSec && stationaryValue.toInt() == stationarySec
+                    FilterChip(
+                        selected = isSelected,
+                        onClick = {
+                            activeValue = activeSec.toFloat()
+                            stationaryValue = stationarySec.toFloat()
+                            viewModel.updateLocationIntervals(activeSec, stationarySec)
+                        },
+                        label = {
+                            Text(
+                                text = label,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.SemiBold,
+                                modifier = Modifier.fillMaxWidth(),
+                                textAlign = TextAlign.Center
+                            )
+                        },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = TrackerGreen.copy(alpha = 0.18f),
+                            selectedLabelColor = TrackerGreen
+                        ),
+                        modifier = Modifier.weight(1f)
+                    )
+                }
+            }
+
+            Spacer(modifier = Modifier.height(12.dp))
+
+            // Active / Moving Interval Slider
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "When Moving",
+                        fontSize = 14.sp,
+                        color = TextPrimary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = formatFriendlyDuration(activeValue.toInt()),
+                        fontSize = 13.sp,
+                        color = TrackerGreen,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Slider(
+                    value = activeValue,
+                    onValueChange = { activeValue = it },
+                    onValueChangeFinished = {
+                        viewModel.updateLocationIntervals(activeValue.toInt(), stationaryValue.toInt())
+                    },
+                    valueRange = 5f..120f,
+                    steps = 22,
+                    colors = SliderDefaults.colors(
+                        activeTrackColor = TrackerGreen,
+                        inactiveTrackColor = CyberGrayBorder,
+                        thumbColor = TrackerGreen
+                    ),
+                    modifier = Modifier.testTag("active_interval_slider")
+                )
+                Text(
+                    text = "Frequent updates while you are walking or driving.",
+                    fontSize = 11.sp,
+                    color = TextSecondary
+                )
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+
+            // Stationary Interval Slider
+            Column {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = "When Stationary (Battery Saver)",
+                        fontSize = 14.sp,
+                        color = TextPrimary,
+                        fontWeight = FontWeight.SemiBold
+                    )
+                    Text(
+                        text = formatFriendlyDuration(stationaryValue.toInt()),
+                        fontSize = 13.sp,
+                        color = TrackerBlue,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+                Slider(
+                    value = stationaryValue,
+                    onValueChange = { stationaryValue = it },
+                    onValueChangeFinished = {
+                        viewModel.updateLocationIntervals(activeValue.toInt(), stationaryValue.toInt())
+                    },
+                    valueRange = 10f..1800f,
+                    steps = 59,
+                    colors = SliderDefaults.colors(
+                        activeTrackColor = TrackerBlue,
+                        inactiveTrackColor = CyberGrayBorder,
+                        thumbColor = TrackerBlue
+                    ),
+                    modifier = Modifier.testTag("stationary_interval_slider")
+                )
+                Text(
+                    text = "Slower updates when your phone is resting still to save battery.",
+                    fontSize = 11.sp,
+                    color = TextSecondary
+                )
+            }
+        }
+    }
+}
+
+private fun formatFriendlyDuration(seconds: Int): String {
+    return when {
+        seconds < 60 -> "Every ${seconds}s"
+        seconds % 60 == 0 -> "Every ${seconds / 60} min"
+        else -> "Every ${seconds / 60}m ${seconds % 60}s"
+    }
+}
+
+// --- Activity Summary & Show All Technical Data Toggle Card ---
+
+@Composable
+fun ActivityAndDetailsToggleCard(
+    logs: List<TrackerLog>,
+    showTechnicalDetails: Boolean,
+    onToggleTechnicalDetails: (Boolean) -> Unit
 ) {
     Card(
         modifier = Modifier
@@ -708,249 +1226,141 @@ fun StatusOverviewCard(
         shape = RoundedCornerShape(24.dp)
     ) {
         Column(
-            modifier = Modifier.padding(16.dp)
+            modifier = Modifier.padding(18.dp)
         ) {
+            // Recent Friendly Activity Summary (Up to 3 latest events in plain English)
+            Text(
+                text = "Recent Updates",
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Bold,
+                color = TextPrimary
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+
+            if (logs.isEmpty()) {
+                Text(
+                    text = "No activity yet. Connect to a target above to start sharing your location.",
+                    fontSize = 12.sp,
+                    color = TextSecondary
+                )
+            } else {
+                val recentLogs = logs.take(3)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    recentLogs.forEach { log ->
+                        FriendlyActivityRow(log = log)
+                    }
+                }
+            }
+
+            Spacer(modifier = Modifier.height(14.dp))
+            HorizontalDivider(color = CyberGrayBorder)
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Prominent Toggle to view all technical data, logs & test tools
             Row(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .clickable { onToggleTechnicalDetails(!showTechnicalDetails) }
+                    .padding(vertical = 4.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column {
-                    Text(
-                        text = "CORE TELEMETRY",
-                        fontSize = 11.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TrackerBlue,
-                        letterSpacing = 1.sp,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Text(
-                        text = if (isServiceRunning) "Tracker Active" else "Tracker Inactive",
-                        fontSize = 20.sp,
-                        fontWeight = FontWeight.ExtraBold,
-                        color = if (isServiceRunning) TextPrimary else TextSecondary
-                    )
-                }
-
-                // Active Switch button
-                Button(
-                    onClick = onToggleService,
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = if (isServiceRunning) TrackerRed.copy(alpha = 0.2f) else TrackerGreen.copy(alpha = 0.2f),
-                        contentColor = if (isServiceRunning) TrackerRed else TrackerGreen
-                    ),
-                    shape = RoundedCornerShape(10.dp),
-                    modifier = Modifier.testTag("toggle_service_button")
-                ) {
-                    Icon(
-                        imageVector = if (isServiceRunning) Icons.Outlined.PowerOff else Icons.Default.Power,
-                        contentDescription = "Power",
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = if (isServiceRunning) "Stop" else "Start",
-                        fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Pulse radar style row
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(CyberGrayLight, RoundedCornerShape(12.dp))
-                    .padding(12.dp),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                // Connection Pulse Dot
-                val infiniteTransition = rememberInfiniteTransition(label = "pulse")
-                val alpha by infiniteTransition.animateFloat(
-                    initialValue = 0.3f,
-                    targetValue = 1.0f,
-                    animationSpec = infiniteRepeatable(
-                        animation = tween(1000, easing = LinearEasing),
-                        repeatMode = RepeatMode.Reverse
-                    ),
-                    label = "alpha"
-                )
-
-                Icon(
-                    imageVector = Icons.Default.Circle,
-                    contentDescription = "Pulse",
-                    tint = when (connectionState) {
-                        ConnectionState.CONNECTED -> TrackerGreen
-                        ConnectionState.CONNECTING -> TrackerBlue
-                        ConnectionState.DISCONNECTED -> TrackerRed
-                    },
-                    modifier = Modifier
-                        .size(12.dp)
-                        .alpha(if (connectionState == ConnectionState.CONNECTING) alpha else 1.0f)
-                )
-
-                Spacer(modifier = Modifier.width(10.dp))
-
-                Column {
-                    Text(
-                        text = "CONNECTION STATUS",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextSecondary,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Text(
-                        text = when (connectionState) {
-                            ConnectionState.CONNECTED -> "CONNECTED SECURELY"
-                            ConnectionState.CONNECTING -> "ESTABLISHING HANDSHAKE..."
-                            ConnectionState.DISCONNECTED -> "DISCONNECTED (OFFLINE)"
-                        },
-                        fontSize = 13.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = when (connectionState) {
-                            ConnectionState.CONNECTED -> TrackerGreen
-                            ConnectionState.CONNECTING -> TrackerBlue
-                            ConnectionState.DISCONNECTED -> TrackerRed
-                        }
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Multi-Columns Details Grid
-            Row(modifier = Modifier.fillMaxWidth()) {
-                // Left Col
                 Column(modifier = Modifier.weight(1f)) {
-                    DetailRow(
-                        label = "PAIRING STATE",
-                        value = if (pairingConfig?.isPaired == true) "PAIRED (SECURED)" else "UNPAIRED",
-                        color = if (pairingConfig?.isPaired == true) TextGreen else TextRed,
-                        icon = Icons.Default.Security
+                    Text(
+                        text = "Show All Technical Data",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = TextPrimary
                     )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    DetailRow(
-                        label = "BEHAVIOR MODE",
-                        value = trackerStatus,
-                        color = if (isPowerSaving) TrackerBlue else TrackerGreen,
-                        icon = Icons.Default.MotionPhotosOn
+                    Text(
+                        text = "View raw GPS coordinates, security keys, full logs & test tools",
+                        fontSize = 12.sp,
+                        color = TextSecondary
                     )
                 }
-
-                // Right Col
-                Column(modifier = Modifier.weight(1f)) {
-                    DetailRow(
-                        label = "POWER CONSERVATION",
-                        value = if (isPowerSaving) "LOW-BATTERY ENGAGED" else "NORMAL DENSITY",
-                        color = if (isPowerSaving) TrackerBlue else TextSecondary,
-                        icon = Icons.Default.SettingsInputComponent
-                    )
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Box(
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(6.dp))
-                            .clickable { onClientPortalClick() }
-                            .testTag("status_client_portal_row")
-                    ) {
-                        DetailRow(
-                            label = "CLIENT PORTAL (TAP TO CHANGE)",
-                            value = if (pairingConfig != null && pairingConfig.serverHost.isNotEmpty()) 
-                                "${pairingConfig.serverHost}:${pairingConfig.serverPort}" else "Not Set",
-                            color = TextPrimary,
-                            icon = Icons.Default.CellTower
-                        )
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            // Last Position details
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .border(1.dp, CyberGrayBorder, RoundedCornerShape(12.dp))
-                    .background(CyberBlack)
-                    .padding(12.dp)
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.GpsFixed,
-                        contentDescription = "GPS",
-                        tint = TrackerBlue,
-                        modifier = Modifier.size(20.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column {
-                        Text(
-                            text = "LAST SYNCED GPS POSITION",
-                            fontSize = 9.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TextSecondary,
-                            fontFamily = FontFamily.Monospace
-                        )
-                        if (lastLocation != null) {
-                            Text(
-                                text = "LAT: ${String.format("%.6f", lastLocation.latitude)} | LON: ${String.format("%.6f", lastLocation.longitude)}",
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = TextPrimary,
-                                fontFamily = FontFamily.Monospace
-                            )
-                            Text(
-                                text = "Accuracy: ${String.format("%.1f", lastLocation.accuracy)}m | Speed: ${String.format("%.1f", lastLocation.speed)}m/s",
-                                fontSize = 10.sp,
-                                color = TextSecondary
-                            )
-                        } else {
-                            Text(
-                                text = "Awaiting satellite coordinates signal...",
-                                fontSize = 12.sp,
-                                color = TextSecondary,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
-                    }
-                }
+                Spacer(modifier = Modifier.width(12.dp))
+                Switch(
+                    checked = showTechnicalDetails,
+                    onCheckedChange = onToggleTechnicalDetails,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = Color.White,
+                        checkedTrackColor = TrackerBlue
+                    ),
+                    modifier = Modifier.testTag("toggle_technical_details_switch")
+                )
             }
         }
     }
 }
 
 @Composable
-fun DetailRow(label: String, value: String, color: Color, icon: androidx.compose.ui.graphics.vector.ImageVector) {
+private fun FriendlyActivityRow(log: TrackerLog) {
+    val formatter = remember { SimpleDateFormat("HH:mm", Locale.getDefault()) }
+    val timeString = formatter.format(Date(log.timestamp))
+    val friendlyMessage = remember(log.message, log.type) {
+        humanizeLogMessage(log)
+    }
+
+    val dotColor = when (log.status) {
+        "SUCCESS" -> TrackerGreen
+        "WARNING" -> TrackerBlue
+        "ERROR" -> TrackerRed
+        else -> TextSecondary
+    }
+
     Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.padding(vertical = 2.dp)
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
     ) {
-        Icon(
-            imageVector = icon,
-            contentDescription = null,
-            tint = color.copy(alpha = 0.8f),
-            modifier = Modifier.size(12.dp)
+        Box(
+            modifier = Modifier
+                .size(7.dp)
+                .clip(CircleShape)
+                .background(dotColor)
         )
-        Spacer(modifier = Modifier.width(6.dp))
-        Column {
-            Text(
-                text = label,
-                fontSize = 8.sp,
-                fontWeight = FontWeight.Bold,
-                color = TextSecondary,
-                fontFamily = FontFamily.Monospace
-            )
-            Text(
-                text = value,
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                color = color
-            )
-        }
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = friendlyMessage,
+            fontSize = 12.sp,
+            color = TextPrimary,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = timeString,
+            fontSize = 11.sp,
+            color = TextSecondary
+        )
     }
 }
 
-// --- Pairing Card Composables ---
+private fun humanizeLogMessage(log: TrackerLog): String {
+    val msg = log.message
+    return when {
+        msg.contains("Successfully paired", ignoreCase = true) ->
+            "Device paired and secured with server"
+        msg.contains("Switched active target", ignoreCase = true) || msg.contains("Switched target server", ignoreCase = true) ->
+            msg.substringBefore("[").trim()
+        msg.contains("Tracking frequencies saved", ignoreCase = true) ->
+            "Updated location reporting intervals"
+        msg.contains("Synced position", ignoreCase = true) ->
+            "Location shared with server"
+        msg.contains("Entered low-battery", ignoreCase = true) ->
+            "Phone is still — switched to Battery Saver mode"
+        msg.contains("Motion detected", ignoreCase = true) ->
+            "Movement detected — resumed active location updates"
+        msg.contains("Initializing socket handshake", ignoreCase = true) ->
+            "Connecting to tracking server..."
+        msg.contains("Encrypted Tunnel Authenticated", ignoreCase = true) ->
+            "Verified secure message from server"
+        else -> msg
+    }
+}
+
+// --- Legacy PairingPortalCard kept for compatibility ---
 
 @Composable
 fun PairingPortalCard(
@@ -966,7 +1376,7 @@ fun PairingPortalCard(
     val isConnecting by viewModel.isConnectingForPairing.collectAsState()
 
     Card(
-        modifier = Modifier
+        modifier = modifier
             .fillMaxWidth()
             .border(1.dp, CyberGrayBorder, RoundedCornerShape(24.dp)),
         colors = CardDefaults.cardColors(containerColor = CyberGrayDeep),
@@ -976,34 +1386,24 @@ fun PairingPortalCard(
             modifier = Modifier.padding(16.dp)
         ) {
             Text(
-                text = "PORTAL PAIRING HUB",
-                fontSize = 11.sp,
-                fontWeight = FontWeight.Bold,
-                color = TrackerGreen,
-                letterSpacing = 1.sp,
-                fontFamily = FontFamily.Monospace
-            )
-            Text(
-                text = "Secure Your Device",
+                text = "Pair with Server",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.ExtraBold,
                 color = TextPrimary
             )
             Spacer(modifier = Modifier.height(6.dp))
             Text(
-                text = "Connect to your tracker web portal. Enter your host address and port to initiate handshake, then scan the displayed pairing QR code to establish secure encrypted sync.",
-                fontSize = 11.sp,
+                text = "Connect to your tracking web portal by entering the address or scanning a QR code.",
+                fontSize = 12.sp,
                 color = TextSecondary
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            // Host Entry
             OutlinedTextField(
                 value = inputHost,
                 onValueChange = { viewModel.inputHost.value = it },
-                label = { Text("Web Portal Host / Website") },
-                placeholder = { Text("e.g. 192.168.1.5 or mydeviceportal.com") },
+                label = { Text("Server Address / URL") },
                 singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1018,12 +1418,10 @@ fun PairingPortalCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Port Entry
             OutlinedTextField(
                 value = inputPort,
                 onValueChange = { viewModel.inputPort.value = it },
                 label = { Text("Port") },
-                placeholder = { Text("e.g. 8080") },
                 singleLine = true,
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1036,14 +1434,12 @@ fun PairingPortalCard(
                 )
             )
 
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(14.dp))
 
-            // Action Row
             Row(modifier = Modifier.fillMaxWidth()) {
-                // Handshake Connect
                 Button(
                     onClick = { viewModel.initializePairingConnection(inputHost, inputPort, context) },
-                    colors = ButtonDefaults.buttonColors(containerColor = TrackerGreen, contentColor = CyberBlack),
+                    colors = ButtonDefaults.buttonColors(containerColor = TrackerGreen, contentColor = Color.White),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .weight(1f)
@@ -1052,44 +1448,41 @@ fun PairingPortalCard(
                     enabled = inputHost.isNotEmpty() && !isConnecting
                 ) {
                     if (isConnecting) {
-                        CircularProgressIndicator(modifier = Modifier.size(18.dp), color = CyberBlack)
+                        CircularProgressIndicator(modifier = Modifier.size(18.dp), color = Color.White)
                     } else {
                         Icon(Icons.Default.NetworkCheck, contentDescription = null, modifier = Modifier.size(16.dp))
                         Spacer(modifier = Modifier.width(6.dp))
-                        Text("Connect Port", fontWeight = FontWeight.Bold)
+                        Text("Connect Server", fontWeight = FontWeight.Bold)
                     }
                 }
             }
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Scan QR / Manual pairing buttons (Enabled only after handshake configuration)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Button(
                     onClick = onPasteClick,
-                    colors = ButtonDefaults.buttonColors(containerColor = TrackerBlue, contentColor = CyberBlack),
+                    colors = ButtonDefaults.buttonColors(containerColor = TrackerBlue, contentColor = Color.White),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .weight(1f)
                         .height(48.dp)
-                        .testTag("paste_pairing_payload_button")
-                ) {
+                    ) {
                     Icon(Icons.Default.Code, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text("Paste JSON", fontWeight = FontWeight.Bold)
+                    Text("Paste Code", fontWeight = FontWeight.Bold)
                 }
-                
+
                 Button(
                     onClick = onScanClick,
-                    colors = ButtonDefaults.buttonColors(containerColor = TrackerBlue, contentColor = CyberBlack),
+                    colors = ButtonDefaults.buttonColors(containerColor = TrackerBlue, contentColor = Color.White),
                     shape = RoundedCornerShape(12.dp),
                     modifier = Modifier
                         .weight(1f)
                         .height(48.dp)
-                        .testTag("scan_pairing_qr_button")
                 ) {
                     Icon(Icons.Default.QrCodeScanner, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
@@ -1104,7 +1497,6 @@ fun PairingPortalCard(
                         .weight(1f)
                         .height(48.dp)
                         .border(1.dp, CyberGrayBorder, RoundedCornerShape(12.dp))
-                        .testTag("manual_pairing_button")
                 ) {
                     Icon(Icons.Default.Key, contentDescription = null, modifier = Modifier.size(16.dp))
                     Spacer(modifier = Modifier.width(6.dp))
@@ -1126,11 +1518,11 @@ fun ClientSimulatorDeck(viewModel: TrackerViewModel) {
         modifier = Modifier
             .fillMaxWidth()
             .border(1.dp, CyberGrayBorder, RoundedCornerShape(24.dp)),
-        colors = CardDefaults.cardColors(containerColor = CyberGrayDeep.copy(alpha = 0.9f)),
+        colors = CardDefaults.cardColors(containerColor = CyberGrayDeep),
         shape = RoundedCornerShape(24.dp)
     ) {
         Column(
-            modifier = Modifier.padding(14.dp)
+            modifier = Modifier.padding(16.dp)
         ) {
             Row(
                 modifier = Modifier
@@ -1142,33 +1534,30 @@ fun ClientSimulatorDeck(viewModel: TrackerViewModel) {
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Icon(
                         imageVector = Icons.Default.Radio,
-                        contentDescription = "Sim",
+                        contentDescription = "Test Remote Actions",
                         tint = TrackerBlue,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(20.dp)
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text(
-                            text = "PORTAL COMMAND CONSOLE (SIMULATOR)",
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = TrackerBlue,
-                            fontFamily = FontFamily.Monospace
-                        )
-                        Text(
-                            text = "Simulate remote operations in-app",
-                            fontSize = 12.sp,
+                            text = "Test Remote Actions (Simulator)",
+                            fontSize = 15.sp,
                             fontWeight = FontWeight.Bold,
                             color = TextPrimary
+                        )
+                        Text(
+                            text = "Preview how alerts, sirens, and motion work on this device",
+                            fontSize = 11.sp,
+                            color = TextSecondary
                         )
                     }
                 }
                 Text(
-                    text = if (isExpanded) "CLOSE [-]" else "OPEN COMMANDS [+]",
-                    fontSize = 10.sp,
+                    text = if (isExpanded) "Hide" else "Open",
+                    fontSize = 12.sp,
                     fontWeight = FontWeight.Bold,
-                    color = TrackerBlue,
-                    fontFamily = FontFamily.Monospace
+                    color = TrackerBlue
                 )
             }
 
@@ -1178,14 +1567,6 @@ fun ClientSimulatorDeck(viewModel: TrackerViewModel) {
                         .fillMaxWidth()
                         .padding(top = 14.dp)
                 ) {
-                    Text(
-                        text = "Because local network environments restrict connecting to hostports easily in browser-based emulators, use these actions to directly dispatch commands into the encrypted parsing pipelines:",
-                        fontSize = 11.sp,
-                        color = TextSecondary,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
-
-                    // Commands Grid Rows
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1195,13 +1576,13 @@ fun ClientSimulatorDeck(viewModel: TrackerViewModel) {
                             colors = ButtonDefaults.buttonColors(containerColor = CyberGrayLight, contentColor = TextPrimary),
                             modifier = Modifier
                                 .weight(1f)
-                                .height(40.dp)
-                                .border(1.dp, CyberGrayBorder, RoundedCornerShape(8.dp)),
-                            shape = RoundedCornerShape(8.dp)
+                                .height(42.dp)
+                                .border(1.dp, CyberGrayBorder, RoundedCornerShape(10.dp)),
+                            shape = RoundedCornerShape(10.dp)
                         ) {
                             Icon(Icons.Default.GpsFixed, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Sync Loc", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Test Location", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
 
                         Button(
@@ -1209,13 +1590,13 @@ fun ClientSimulatorDeck(viewModel: TrackerViewModel) {
                             colors = ButtonDefaults.buttonColors(containerColor = CyberGrayLight, contentColor = TextPrimary),
                             modifier = Modifier
                                 .weight(1f)
-                                .height(40.dp)
-                                .border(1.dp, CyberGrayBorder, RoundedCornerShape(8.dp)),
-                            shape = RoundedCornerShape(8.dp)
+                                .height(42.dp)
+                                .border(1.dp, CyberGrayBorder, RoundedCornerShape(10.dp)),
+                            shape = RoundedCornerShape(10.dp)
                         ) {
                             Icon(Icons.Default.FlashOn, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Flash Alert", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Test Flash", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
 
@@ -1230,13 +1611,13 @@ fun ClientSimulatorDeck(viewModel: TrackerViewModel) {
                             colors = ButtonDefaults.buttonColors(containerColor = CyberGrayLight, contentColor = TrackerRed),
                             modifier = Modifier
                                 .weight(1f)
-                                .height(40.dp)
-                                .border(1.dp, TrackerRed.copy(alpha = 0.5f), RoundedCornerShape(8.dp)),
-                            shape = RoundedCornerShape(8.dp)
+                                .height(42.dp)
+                                .border(1.dp, TrackerRed.copy(alpha = 0.5f), RoundedCornerShape(10.dp)),
+                            shape = RoundedCornerShape(10.dp)
                         ) {
                             Icon(Icons.Default.NotificationsActive, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Blare Siren", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Test Siren", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
 
                         Button(
@@ -1244,13 +1625,13 @@ fun ClientSimulatorDeck(viewModel: TrackerViewModel) {
                             colors = ButtonDefaults.buttonColors(containerColor = CyberGrayLight, contentColor = TrackerGreen),
                             modifier = Modifier
                                 .weight(1f)
-                                .height(40.dp)
-                                .border(1.dp, TrackerGreen.copy(alpha = 0.5f), RoundedCornerShape(8.dp)),
-                            shape = RoundedCornerShape(8.dp)
+                                .height(42.dp)
+                                .border(1.dp, TrackerGreen.copy(alpha = 0.5f), RoundedCornerShape(10.dp)),
+                            shape = RoundedCornerShape(10.dp)
                         ) {
                             Icon(Icons.Default.Warning, contentDescription = null, modifier = Modifier.size(14.dp))
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text("Lost Msg", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text("Test Message", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
 
@@ -1259,7 +1640,7 @@ fun ClientSimulatorDeck(viewModel: TrackerViewModel) {
                     OutlinedTextField(
                         value = mockMessageText,
                         onValueChange = { mockMessageText = it },
-                        label = { Text("Display Message Text") },
+                        label = { Text("Emergency Screen Message") },
                         textStyle = TextStyle(fontSize = 12.sp),
                         modifier = Modifier.fillMaxWidth(),
                         colors = OutlinedTextFieldDefaults.colors(
@@ -1269,15 +1650,7 @@ fun ClientSimulatorDeck(viewModel: TrackerViewModel) {
                         )
                     )
 
-                    Spacer(modifier = Modifier.height(14.dp))
-                    Text(
-                        text = "SIMULATE MOTION SENSORS (ACCELEROMETER)",
-                        fontSize = 9.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextSecondary,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Spacer(modifier = Modifier.height(6.dp))
+                    Spacer(modifier = Modifier.height(12.dp))
 
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -1288,11 +1661,11 @@ fun ClientSimulatorDeck(viewModel: TrackerViewModel) {
                             colors = ButtonDefaults.buttonColors(containerColor = CyberGrayLight, contentColor = TrackerGreen),
                             modifier = Modifier
                                 .weight(1f)
-                                .height(38.dp)
-                                .border(1.dp, CyberGrayBorder, RoundedCornerShape(8.dp)),
-                            shape = RoundedCornerShape(8.dp)
+                                .height(40.dp)
+                                .border(1.dp, CyberGrayBorder, RoundedCornerShape(10.dp)),
+                            shape = RoundedCornerShape(10.dp)
                         ) {
-                            Text("Trigger Motion (Resume normal GPS)", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Text("Simulate Moving", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
 
                         Button(
@@ -1300,11 +1673,11 @@ fun ClientSimulatorDeck(viewModel: TrackerViewModel) {
                             colors = ButtonDefaults.buttonColors(containerColor = CyberGrayLight, contentColor = TrackerBlue),
                             modifier = Modifier
                                 .weight(1f)
-                                .height(38.dp)
-                                .border(1.dp, CyberGrayBorder, RoundedCornerShape(8.dp)),
-                            shape = RoundedCornerShape(8.dp)
+                                .height(40.dp)
+                                .border(1.dp, CyberGrayBorder, RoundedCornerShape(10.dp)),
+                            shape = RoundedCornerShape(10.dp)
                         ) {
-                            Text("Trigger Idle (Stationary Battery-Save)", fontSize = 10.sp, fontWeight = FontWeight.Bold)
+                            Text("Simulate Stationary", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                         }
                     }
                 }
@@ -1332,9 +1705,8 @@ fun TerminalLogsConsole(
         Column(
             modifier = Modifier
                 .padding(16.dp)
-                .height(300.dp)
+                .height(280.dp)
         ) {
-            // Header Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -1349,12 +1721,11 @@ fun TerminalLogsConsole(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "SECURE LOG CONSOLE",
+                        text = "TECHNICAL EVENT LOGS (${logs.size})",
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFFE3E2E6),
-                        fontFamily = FontFamily.Monospace,
-                        letterSpacing = 1.sp
+                        fontFamily = FontFamily.Monospace
                     )
                 }
 
@@ -1363,8 +1734,8 @@ fun TerminalLogsConsole(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = "Export Logs",
-                        fontSize = 10.sp,
+                        text = "Share",
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF69F0AE),
                         modifier = Modifier
@@ -1374,18 +1745,18 @@ fun TerminalLogsConsole(
 
                     Text(
                         text = "Clear",
-                        fontSize = 10.sp,
+                        fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
                         color = Color(0xFF8E9099),
                         modifier = Modifier
                             .clickable { onClearLogs() }
                             .padding(horizontal = 6.dp, vertical = 4.dp)
                     )
-                    
+
                     if (onDisconnect != null) {
                         Text(
-                            text = "Disconnect",
-                            fontSize = 10.sp,
+                            text = "Reset Pairing",
+                            fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
                             color = Color(0xFFFA8A80),
                             modifier = Modifier
@@ -1398,7 +1769,6 @@ fun TerminalLogsConsole(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Logs Shell box
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1413,7 +1783,7 @@ fun TerminalLogsConsole(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = "$ _ Awaiting telemetry handshakes...",
+                            text = "No technical events recorded yet.",
                             color = Color(0xFF8E9099).copy(alpha = 0.7f),
                             fontSize = 11.sp,
                             fontFamily = FontFamily.Monospace
@@ -1434,38 +1804,35 @@ fun TerminalLogsConsole(
     }
 }
 
-fun shareLogFile(context: android.content.Context, logs: List<com.example.data.TrackerLog>) {
+fun shareLogFile(context: android.content.Context, logs: List<TrackerLog>) {
     try {
         val sb = StringBuilder()
         sb.append("==================================================\n")
         sb.append("  FIND MY DEVICE - BACKGROUND TRACKING LOGS\n")
-        sb.append("  Generated on: ${java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss", java.util.Locale.getDefault()).format(java.util.Date())}\n")
+        sb.append("  Generated on: ${SimpleDateFormat("yyyy-MM-dd HH:mm:ss", Locale.getDefault()).format(Date())}\n")
         sb.append("  Device Model: ${android.os.Build.MANUFACTURER} ${android.os.Build.MODEL}\n")
         sb.append("  Android OS  : ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT})\n")
         sb.append("==================================================\n\n")
-        
+
         if (logs.isEmpty()) {
             sb.append("[NO LOGS RECORDED YET]\n")
         } else {
             logs.asReversed().forEach { log ->
-                val dateStr = java.text.SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", java.util.Locale.getDefault()).format(java.util.Date(log.timestamp))
+                val dateStr = SimpleDateFormat("yyyy-MM-dd HH:mm:ss.SSS", Locale.getDefault()).format(Date(log.timestamp))
                 sb.append("$dateStr [${log.type}] [${log.status}] ${log.message}\n")
             }
         }
         val fullLogsText = sb.toString()
 
-        // 1. Write to cache file
         val cacheDir = context.cacheDir
         val file = java.io.File(cacheDir, "tracker_logs.txt")
         file.writeText(fullLogsText)
 
-        // 2. Automatically copy to clipboard as backup
         val clipboard = context.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
         val clip = android.content.ClipData.newPlainText("Tracker Logs", fullLogsText)
         clipboard.setPrimaryClip(clip)
-        android.widget.Toast.makeText(context, "Logs copied to clipboard!", android.widget.Toast.LENGTH_SHORT).show()
+        Toast.makeText(context, "Logs copied to clipboard!", Toast.LENGTH_SHORT).show()
 
-        // 3. Share with BOTH file stream and full text details
         val authority = "${context.packageName}.fileprovider"
         val fileUri = androidx.core.content.FileProvider.getUriForFile(context, authority, file)
 
@@ -1479,7 +1846,7 @@ fun shareLogFile(context: android.content.Context, logs: List<com.example.data.T
 
         context.startActivity(android.content.Intent.createChooser(shareIntent, "Share Tracker Logs"))
     } catch (e: Exception) {
-        android.widget.Toast.makeText(context, "Failed to share log file: ${e.localizedMessage}", android.widget.Toast.LENGTH_LONG).show()
+        Toast.makeText(context, "Failed to share log file: ${e.localizedMessage}", Toast.LENGTH_LONG).show()
     }
 }
 
@@ -1498,19 +1865,19 @@ fun LogTerminalRow(log: TrackerLog) {
     }
 
     val tagColor = when (log.type) {
-        "CONNECTION" -> Color(0xFF40C4FF) // Bright cyan
-        "LOCATION" -> Color(0xFF69F0AE)  // Bright mint green
-        "COMMAND" -> Color(0xFFE040FB)   // Magenta
-        "SECURITY" -> Color(0xFFFF5252)  // Bright light red
-        "SENSOR" -> Color(0xFFFFAB40)    // Orange
+        "CONNECTION" -> Color(0xFF40C4FF)
+        "LOCATION" -> Color(0xFF69F0AE)
+        "COMMAND" -> Color(0xFFE040FB)
+        "SECURITY" -> Color(0xFFFF5252)
+        "SENSOR" -> Color(0xFFFFAB40)
         else -> Color(0xFF8E9099)
     }
 
     val messageColor = when (log.status) {
-        "SUCCESS" -> Color(0xFF69F0AE) // Bright mint green
-        "WARNING" -> Color(0xFFFFD600) // Bright yellow
-        "ERROR" -> Color(0xFFFF5252)   // Bright light red
-        else -> Color(0xFFE3E2E6)      // Soft white
+        "SUCCESS" -> Color(0xFF69F0AE)
+        "WARNING" -> Color(0xFFFFD600)
+        "ERROR" -> Color(0xFFFF5252)
+        else -> Color(0xFFE3E2E6)
     }
 
     Row(
@@ -1561,25 +1928,24 @@ fun ManualPairingDialog(
         Card(
             modifier = Modifier
                 .fillMaxWidth()
-                .border(1.dp, CyberGrayBorder, RoundedCornerShape(16.dp)),
+                .border(1.dp, CyberGrayBorder, RoundedCornerShape(24.dp)),
             colors = CardDefaults.cardColors(containerColor = CyberGrayDeep),
-            shape = RoundedCornerShape(16.dp)
+            shape = RoundedCornerShape(24.dp)
         ) {
             Column(
-                modifier = Modifier.padding(18.dp)
+                modifier = Modifier.padding(20.dp)
             ) {
                 Text(
-                    text = "MANUAL SECURE PAIRING",
-                    fontSize = 11.sp,
+                    text = "Pair with Security Token",
+                    fontSize = 19.sp,
                     fontWeight = FontWeight.Bold,
-                    color = TrackerBlue,
-                    fontFamily = FontFamily.Monospace
-                )
-                Text(
-                    text = "Setup target server & credentials",
-                    fontSize = 16.sp,
-                    fontWeight = FontWeight.ExtraBold,
                     color = TextPrimary
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = "Enter your server address and pairing credentials below.",
+                    fontSize = 12.sp,
+                    color = TextSecondary
                 )
                 Spacer(modifier = Modifier.height(14.dp))
 
@@ -1590,7 +1956,7 @@ fun ManualPairingDialog(
                     OutlinedTextField(
                         value = hostInput,
                         onValueChange = { hostInput = it },
-                        label = { Text("Target Server Host") },
+                        label = { Text("Server Address") },
                         singleLine = true,
                         modifier = Modifier.weight(0.68f),
                         colors = OutlinedTextFieldDefaults.colors(
@@ -1619,7 +1985,7 @@ fun ManualPairingDialog(
                 OutlinedTextField(
                     value = clientIdInput,
                     onValueChange = { clientIdInput = it },
-                    label = { Text("Client ID / Device Identifier") },
+                    label = { Text("Device ID") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -1634,7 +2000,7 @@ fun ManualPairingDialog(
                 OutlinedTextField(
                     value = secretTokenInput,
                     onValueChange = { secretTokenInput = it },
-                    label = { Text("Encrypted Secret Token") },
+                    label = { Text("Pairing Token / Secret Key") },
                     singleLine = true,
                     modifier = Modifier.fillMaxWidth(),
                     colors = OutlinedTextFieldDefaults.colors(
@@ -1648,17 +2014,12 @@ fun ManualPairingDialog(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Text(
-                        text = "Cancel",
-                        fontSize = 14.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextSecondary,
-                        modifier = Modifier
-                            .clickable { onDismiss() }
-                            .padding(12.dp)
-                    )
+                    TextButton(onClick = onDismiss) {
+                        Text("Cancel", color = TextSecondary)
+                    }
 
                     Spacer(modifier = Modifier.width(8.dp))
 
@@ -1677,10 +2038,10 @@ fun ManualPairingDialog(
                             viewModel.processPairingQR(qrSimPayload.toString(), context)
                             onDismiss()
                         },
-                        colors = ButtonDefaults.buttonColors(containerColor = TrackerBlue, contentColor = CyberBlack),
-                        shape = RoundedCornerShape(8.dp)
+                        colors = ButtonDefaults.buttonColors(containerColor = TrackerGreen, contentColor = Color.White),
+                        shape = RoundedCornerShape(12.dp)
                     ) {
-                        Text("Confirm Pair", fontWeight = FontWeight.Bold)
+                        Text("Pair & Connect", fontWeight = FontWeight.Bold)
                     }
                 }
             }
@@ -1706,11 +2067,10 @@ fun EmergencyActionOverlays(
     }
 
     if (isFlashing || alertMessage != null || isAlarm) {
-        // High visibility background strobe/pulsing animation
         val infiniteTransition = rememberInfiniteTransition(label = "strobe")
         val strobeColor by infiniteTransition.animateColor(
             initialValue = TrackerRed,
-            targetValue = Color(0xFF0D0E12), // Strobe between red and very dark slate to keep high urgency but avoid blinding
+            targetValue = Color(0xFF0D0E12),
             animationSpec = infiniteRepeatable(
                 animation = tween(400, easing = LinearEasing),
                 repeatMode = RepeatMode.Reverse
@@ -1728,7 +2088,6 @@ fun EmergencyActionOverlays(
                     .padding(16.dp),
                 contentAlignment = Alignment.Center
             ) {
-                // Sleek, high-contrast container so elements are perfectly readable and never "white-on-white"
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1736,7 +2095,7 @@ fun EmergencyActionOverlays(
                         .border(2.dp, TrackerRed, RoundedCornerShape(24.dp)),
                     shape = RoundedCornerShape(24.dp),
                     colors = CardDefaults.cardColors(
-                        containerColor = Color(0xFF111218) // Sleek rich dark slate card container
+                        containerColor = Color(0xFF111218)
                     )
                 ) {
                     Column(
@@ -1746,7 +2105,6 @@ fun EmergencyActionOverlays(
                         verticalArrangement = Arrangement.Center,
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        // Alarm siren ringing animation
                         val scaleTransition = rememberInfiniteTransition(label = "ringScale")
                         val scale by scaleTransition.animateFloat(
                             initialValue = 0.9f,
@@ -1770,11 +2128,10 @@ fun EmergencyActionOverlays(
                         Spacer(modifier = Modifier.height(20.dp))
 
                         Text(
-                            text = "EMERGENCY TRACKING ACTIVE",
-                            fontSize = 13.sp,
+                            text = "EMERGENCY ALERT",
+                            fontSize = 14.sp,
                             fontWeight = FontWeight.Bold,
                             letterSpacing = 2.sp,
-                            fontFamily = FontFamily.Monospace,
                             color = TrackerRed,
                             textAlign = TextAlign.Center
                         )
@@ -1797,22 +2154,12 @@ fun EmergencyActionOverlays(
 
                         if (isAlarm) {
                             Text(
-                                text = "SIREN BLARING • MAX STREAM VOLUME\n(Auto-silences in 5 minutes to protect battery)",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                fontFamily = FontFamily.Monospace,
-                                color = Color.White.copy(alpha = 0.6f),
+                                text = "Siren is sounding at maximum volume\n(Automatically stops after 5 minutes)",
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = Color.White.copy(alpha = 0.7f),
                                 textAlign = TextAlign.Center,
-                                lineHeight = 16.sp
-                            )
-                        } else {
-                            Text(
-                                text = "STATIONARY SECURITY MODE ENABLED",
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                fontFamily = FontFamily.Monospace,
-                                color = Color.White.copy(alpha = 0.6f),
-                                textAlign = TextAlign.Center
+                                lineHeight = 18.sp
                             )
                         }
 
@@ -1821,8 +2168,8 @@ fun EmergencyActionOverlays(
                         Button(
                             onClick = onDismissAlert,
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = Color.White, // Pure high-contrast white button background
-                                contentColor = Color(0xFF111218) // Deep dark text for extreme readability
+                                containerColor = Color.White,
+                                contentColor = Color(0xFF111218)
                             ),
                             shape = RoundedCornerShape(12.dp),
                             modifier = Modifier
@@ -1831,152 +2178,13 @@ fun EmergencyActionOverlays(
                                 .testTag("dismiss_emergency_overlay_button")
                         ) {
                             Text(
-                                text = "Dismiss Alarm & Message",
+                                text = "Dismiss Alert",
                                 fontWeight = FontWeight.Black,
                                 fontSize = 16.sp
                             )
                         }
                     }
                 }
-            }
-        }
-    }
-}
-
-@Composable
-fun TrackingFrequencySettingsCard(viewModel: TrackerViewModel) {
-    val pairingConfig by viewModel.pairingConfig.collectAsState()
-    
-    val currentActive = pairingConfig?.locationIntervalSec ?: 10
-    val currentStationary = pairingConfig?.stationaryIntervalSec ?: 300
-
-    var activeValue by remember(currentActive) { mutableStateOf(currentActive.toFloat()) }
-    var stationaryValue by remember(currentStationary) { mutableStateOf(currentStationary.toFloat()) }
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .border(1.dp, CyberGrayBorder, RoundedCornerShape(24.dp)),
-        colors = CardDefaults.cardColors(containerColor = CyberGrayDeep.copy(alpha = 0.9f)),
-        shape = RoundedCornerShape(24.dp)
-    ) {
-        Column(
-            modifier = Modifier.padding(16.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Settings,
-                    contentDescription = "Settings",
-                    tint = TrackerGreen,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Column {
-                    Text(
-                        text = "LOCATION REPORTING FREQUENCY",
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TrackerGreen,
-                        fontFamily = FontFamily.Monospace
-                    )
-                    Text(
-                        text = "Customize update intervals",
-                        fontSize = 12.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = TextPrimary
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Active / Moving Interval Slider
-            Column {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "Active Tracking (Moving)",
-                        fontSize = 12.sp,
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        text = "${activeValue.toInt()}s",
-                        fontSize = 12.sp,
-                        color = TrackerGreen,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-                Slider(
-                    value = activeValue,
-                    onValueChange = { activeValue = it },
-                    onValueChangeFinished = {
-                        viewModel.updateLocationIntervals(activeValue.toInt(), stationaryValue.toInt())
-                    },
-                    valueRange = 5f..120f,
-                    steps = 22,
-                    colors = SliderDefaults.colors(
-                        activeTrackColor = TrackerGreen,
-                        inactiveTrackColor = CyberGrayBorder,
-                        thumbColor = TrackerGreen
-                    ),
-                    modifier = Modifier.testTag("active_interval_slider")
-                )
-                Text(
-                    text = "Controls update frequency when device is actively moving.",
-                    fontSize = 10.sp,
-                    color = TextSecondary
-                )
-            }
-
-            Spacer(modifier = Modifier.height(16.dp))
-
-            // Stationary Interval Slider
-            Column {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
-                ) {
-                    Text(
-                        text = "Stationary (Power-Saving)",
-                        fontSize = 12.sp,
-                        color = TextPrimary,
-                        fontWeight = FontWeight.Medium
-                    )
-                    Text(
-                        text = if (stationaryValue >= 60) "${(stationaryValue / 60).toInt()}m" else "${stationaryValue.toInt()}s",
-                        fontSize = 12.sp,
-                        color = TrackerGreen,
-                        fontWeight = FontWeight.Bold,
-                        fontFamily = FontFamily.Monospace
-                    )
-                }
-                Slider(
-                    value = stationaryValue,
-                    onValueChange = { stationaryValue = it },
-                    onValueChangeFinished = {
-                        viewModel.updateLocationIntervals(activeValue.toInt(), stationaryValue.toInt())
-                    },
-                    valueRange = 10f..1800f,
-                    steps = 59,
-                    colors = SliderDefaults.colors(
-                        activeTrackColor = TrackerGreen,
-                        inactiveTrackColor = CyberGrayBorder,
-                        thumbColor = TrackerGreen
-                    ),
-                    modifier = Modifier.testTag("stationary_interval_slider")
-                )
-                Text(
-                    text = "Controls update frequency when device is stationary to conserve battery.",
-                    fontSize = 10.sp,
-                    color = TextSecondary
-                )
             }
         }
     }
